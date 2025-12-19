@@ -1,4 +1,5 @@
 #include "i2c.h"
+#include "util.h"
 
 
 void I2C::setup() {
@@ -23,16 +24,16 @@ bool I2C::read(uint8_t address, uint8_t reg, uint8_t data[], uint8_t len) {
     // First we write the register that we are wanting to start the read from.
     Wire.beginTransmission(address);
     if (Wire.write(reg) != 1) {
-        Serial.println("Wire: failed to queue register byte");
+        println("Wire: failed to queue register byte");
         return false;
     }
     // End the transmission but don't send the stop bit as we want to do the read.
     uint8_t err = endTransmission(false);
     
     // Begin the read
-    Wire.beginTransmission(address);
+    //Wire.beginTransmission(address);
     Wire.requestFrom(address, len);
-    for (int i = 0; i < len; i++) {
+    for (uint8_t i = 0; i < len; i++) {
         data[i] = Wire.read();
     }
     return endTransmission();
@@ -55,15 +56,20 @@ bool I2C::endTransmission(bool sendStop) {
 
     // Something went wrong..
     switch (err) {
-        case 0x00:  Serial.println("Wire transmit was successful"); break;
-        case 0x02:  Serial.println("Address was NACK'd"); break;
-        case 0x03:  Serial.println("Data was NACK'd"); break;
-        case 0x04:  Serial.println("Unknown error occurred"); break;
-        case 0x05:  Serial.println("Transmission time-outed"); break;
+        print("Wire error: 0x"); 
+        println(err, HEX);
+
+        /*
+        case 0x00:  println("Wire transmit was successful"); break;
+        case 0x02:  println("Address was NACK'd"); break;
+        case 0x03:  println("Data was NACK'd"); break;
+        case 0x04:  println("Unknown error occurred"); break;
+        case 0x05:  println("Transmission time-outed"); break;
         // The library also supports some extended errors that might give a hint on what is failing.
-        case 0x10:  Serial.println("Wire is uninitialized"); break;
-        case 0x11:  Serial.println("Pullups are missing"); break;
-        case 0x12:  Serial.println("Arbitration lost"); break;
+        case 0x10:  println("Wire is uninitialized"); break;
+        case 0x11:  println("Pullups are missing"); break;
+        case 0x12:  println("Arbitration lost"); break;
+        */
     }
     return false;
 }

@@ -15,6 +15,20 @@
 #define CELL_OV_TARGET 4200 // 4.2V         # Target of the cell over voltage in mV
 #define CELL_UV_TARGET 3000 // 3.0V         # Target of the cell under voltage in mV
 
+#define BQ76920_SYS_STAT_OV (1 << 2)
+#define BQ76920_SYS_STAT_UV (1 << 3)
+
+enum class BQ76920_REG {
+    SYS_STAT = 0x00
+};
+
+enum class BQ76920_OV_UV_STATE {
+    HEALTHY,
+    OVER_VOLTAGE,
+    UNDER_VOLTAGE,
+    UNDER_VOLTAGE_AND_OVER_VOLTAGE,
+};
+
 class BQ76920 {
     public:
         bool begin();
@@ -24,8 +38,20 @@ class BQ76920 {
         
         void clearOVandUVTrip();
         void enableChargeAndDischarge();
+        void disableChargeAndDischarge();
+        void stopCellBalancing();
         float ReadTemp();
         uint16_t CalculateADC(uint8_t msb, uint8_t lsb);
+
+        uint8_t getReg(BQ76920_REG reg);
+
+        BQ76920_OV_UV_STATE getOVUVState();
+
+        void enableCharging();
+        void disableCharging();
+        void enableDischarging();
+        void disableDischarging();
+
     private:
         bool getCellVoltages();
         bool cellShouldBePopulated(int cell);
@@ -39,7 +65,6 @@ class BQ76920 {
         bool setBit(uint8_t reg, uint8_t bit, bool value);
         uint8_t maxVoltageCell = 6;
         void writeOVandUVTripVoltages();
-        void disableChargeAndDischarge();
 
 
         int32_t adcOffset = 0;   // ADC offset in mV
@@ -51,7 +76,5 @@ class BQ76920 {
         uint16_t cellUVMilliVoltage = 0;
         bool balancing = false;
 };
-
-float ntc_temp_from_resistance(float r_ohms);
 
 #endif

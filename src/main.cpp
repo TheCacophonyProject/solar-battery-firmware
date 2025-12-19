@@ -7,47 +7,21 @@
 
 #include "bq25798.h"
 #include "bq76920.h"
-
-#include <Adafruit_BQ25798.h>
-Adafruit_BQ25798 bq;
-
+#include "protection.h"
+#include "util.h"
 
 #define WDT_DURATION WDTO_2S
 
 BQ25798 charger;
 BQ76920 balancer;
 
-//#define PIN_I2C_SCL PIN_PB0
-//#define PIN_I2C_SDA PIN_PB1
-
-//#define PIN_TX PIN_PB2
-//#define PIN_RX PIN_PB3
-
 #define PIN_LED PIN_PB5
 #define PIN_TS1 PIN_PA7       // BQ76920 TS1
 #define PIN_ALERT PIN_PA6     // BQ76920 ALERT
 #define PIN_INTERRUPT PIN_PA4 // BQ25798 Interrupt
-#define PIN_CE PIN_PA5        // BQ25798 ~CHarge Enable
+#define PIN_CE PIN_PA5        // BQ25798 ~Charge Enable
 
-volatile unsigned long pitTime = 0; // Don't need to worry about an overflow for this as it will last (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
-
-void setupPIT() {
-  RTC.CLKSEL = RTC_CLKSEL_INT32K_gc; // Set clock source to the internal 32.768kHz oscillator
-  RTC.PITCTRLA = RTC_PITEN_bm | RTC_PERIOD_CYC32768_gc; // Enable PIT and set period to 1 second
-  RTC.PITINTCTRL = RTC_PI_bm; // Enable PIT interrupt
-}
-
-ISR(RTC_PIT_vect) {
-  RTC.PITINTFLAGS = RTC_PI_bm; // Clear interrupt flag, otherwise it will constantly trigger.
-  pitTime += 1;
-}
-
-unsigned long getPitTime() {
-  noInterrupts();
-  unsigned long time = pitTime;
-  interrupts();
-  return time;
-}
+uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
 
 void setup() {
   // Setup WDT
@@ -59,31 +33,28 @@ void setup() {
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_TS1, INPUT);
   pinMode(PIN_ALERT, INPUT);
-  pinMode(PIN_CE, OUTPUT);
+  pinMode(PIN_INTERRUPT, INPUT_PULLUP);
 
   // Set pin initial states
   ledOff();
-  //disableCharger();
 
-  // Setup debug
+  // Setup serial logging
   Serial.begin(9600);
-  Serial.println("");
-  Serial.println("Starting...");
+  println("Starting...");
 
   // Setup i2C
   Wire.begin();
 
   // Try to find the BQ25798 (MPPT charger)
-  if (!charger.begin()) {
-    Serial.println(F("Could not find the BQ25798"));
-    // Will get restarted from the WDT
-    while (1);
+  if (!charger.begin(PIN_CE)) {
+    println(F("Could not find the BQ25798"));
+    restart();
   }
-  Serial.println(F("Charger BQ25798 found!"));
+  println(F("Charger BQ25798 found!"));
 
   // Try to find the BQ76920 (cell balancer)
   if (!balancer.begin()) {
-    Serial.println("Could not see BQ76920, will try driving TS1 low to try enabling it.");
+    println(F("Could not see BQ76920, will try driving TS1 low to try enabling it."));
     // Set to output, drive high, then back to input.
     pinMode(PIN_TS1, OUTPUT);
     digitalWrite(PIN_TS1, HIGH);
@@ -91,34 +62,29 @@ void setup() {
     pinMode(PIN_TS1, INPUT);
     delay(100);
     if (!balancer.begin()) {
-      Serial.println(F("Could not find the BQ76920"));
-      // Will get restarted from the WDT
-      while (1);  
+      println(F("Could not find the BQ76920"));
+      restart();
     }
   }
-  Serial.println(F("Balancer BQ76920 found!"));
+  println(F("Balancer BQ76920 found!"));
+  
+  // Setup interrupts
+  println("Setting up interrupts from BQ76920 ALERT and BQ25798 INT");
+  attachInterrupt(digitalPinToInterrupt(PIN_ALERT), balancerInterrupt, RISING);
+  attachInterrupt(digitalPinToInterrupt(PIN_INTERRUPT), chargerInterrupt, FALLING);
 
-  
-  balancer.updateBalanceRoutine();
-  balancer.readStatus();
-  balancer.readChargeDischargeBits();
-  
-  balancer.clearOVandUVTrip();
-  balancer.enableChargeAndDischarge();
-  
-  Serial.println("Setting up PIT");
+  println("Setting up PIT");
   setupPIT();
-  Serial.println("Set up PIT");
   set_sleep_mode(SLEEP_MODE_PWR_DOWN);
   sleep_enable();
 }
 
-void enableCharger() {
-  digitalWrite(PIN_CE, LOW);
+void chargerInterrupt() {
+  println("Charger interrupt");
 }
 
-void disableCharger() {
-  digitalWrite(PIN_CE, HIGH);
+void balancerInterrupt() {
+  println("Balancer interrupt");
 }
 
 void ledOn() {
@@ -129,49 +95,146 @@ void ledOff() {
   digitalWrite(PIN_LED, LOW);
 }
 
-
-unsigned long lastChargerUpdateSeconds = 0;
-unsigned long lastBalancerUpdateSeconds = 0;
-
-
+uint32_t lastChargerUpdateSeconds = 0;
+uint32_t lastBalancerUpdateSeconds = 0;
 
 void loop() {
+  // Update the time in seconds.
+  seconds = getSeconds();
+
   // Reset WDT to prevent it from triggering.
   wdt_reset(); 
 
-  // Need to disable interrupts while we read the time as it is changed in the PIT interrupt
-  noInterrupts();
-  unsigned long seconds = pitTime;
-  interrupts();
-
-  if (seconds - lastChargerUpdateSeconds > 5) {
-    //Serial.println("Charger chip update");
-    lastChargerUpdateSeconds = seconds;
-    
-    // Force source retry for the charger. (If it fails it will not retry for about 6 minutes but we want it to check more often.)
-    // TODO: Only force source retry when the source has failed.
-    charger.sourceRetry();
-    
-    // Enable MPPT again (if the source fails, MPPT gets disabled so we need to enable it again)
-    // TODO: Log when it actually updates the state rather than just enabling it always
-    charger.enableMPPT();
-
-    // Set VOC (how often it checks the open circuit voltage) rate to 30s
-    // TODO: Reduce the verbose of the logging in the checkStatus
-    charger.checkStatus();
-  }
-
-  if (seconds - lastBalancerUpdateSeconds > 3) {
-    lastBalancerUpdateSeconds = seconds;
-    // TODO, if temperature is out of range, disable or reduce charging.
-    balancer.ReadTemp();
-  }
-
+  // Little heartbeat flash to show we are alive.
   ledOn();
   delay(1);
   ledOff();
 
+  // Run the main logic. This is done in a separate function so it can return early if needed.  
+  mainLogic();
+
+  // Make sure we flush the serial buffer before going to sleep.
   Serial.flush();
+
+  // Go to sleep to reduce power. Can be woken up by:
+  // - PIT interrupt (every second).
+  // - BQ76920 ALERT pin.
+  // - BQ25798 Interrupt pin.
   sleep_mode();
 }
 
+ProtectionState protectionState = ProtectionState();
+
+void mainLogic() {
+  // ===== PROTETION CHECKS =====
+
+  // Create the protection state in the default (healthy) state.
+  ProtectionState newProtectionState = ProtectionState(); 
+
+  // Check the OV and UV state of the cells.
+  BQ76920_OV_UV_STATE ovuvState = balancer.getOVUVState();
+  if (ovuvState == BQ76920_OV_UV_STATE::OVER_VOLTAGE) {
+    newProtectionState.disableCharge();
+  }
+  if (ovuvState == BQ76920_OV_UV_STATE::UNDER_VOLTAGE) {
+    newProtectionState.disableDischarge();
+  }
+  if (ovuvState == BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE) {
+    newProtectionState.disableCharge();
+    newProtectionState.disableDischarge();
+  }
+  
+  // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from FAULT_Status_0 
+  uint8_t faultStatus0 = charger.getReg(bq25798_reg_t::BQ25798_REG20_FAULT_STATUS_0);
+  if (faultStatus0 & BQ25798_VBAT_OVP_STAT) {
+    newProtectionState.disableCharge();
+  }
+
+  // Checking BQ76920 temperature
+  float temp1 = balancer.ReadTemp();
+  print("Temperature: ");
+  println(temp1);
+  if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
+    newProtectionState.disableCharge();
+    newProtectionState.disableDischarge();
+    newProtectionState.disableBalancing();
+  } else if (temp1 <= TEMPERATURE_POINT_2 || temp1 >= TEMPERATURE_POINT_3) {
+    // TODO: Figure out what we want to do here.
+    //  1) Try to mimic the behaviour as though the BQ25798 temperature sensor was in these ranges.
+    //  2) Nothing?
+  }
+
+  // Checking BQ25798 temperature
+  // The BQ25798 charger will only set the state to COLD, COOL, WARM, or HOT if 
+  BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
+  if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
+    newProtectionState.disableCharge();
+    newProtectionState.disableDischarge();
+    newProtectionState.disableBalancing();
+  }
+
+  // Log changes in the protection state.
+  protectionState.logStateChange(newProtectionState);
+
+  // Update the protection state.
+  protectionState = newProtectionState;
+
+  // TODO: Checks to add later:
+  // Check temperature of the temp+humidity sensor when we have the new board
+
+  // ==== Apply protections ====
+  if (!protectionState.getBalancingEnabled()) {
+    // Balancing should not be enabled.
+    balancer.stopCellBalancing();
+  }
+
+  if (protectionState.getChargingEnabled()) {
+    charger.enable();
+    balancer.enableCharging();
+  } else {
+    charger.disable();
+    balancer.disableCharging();
+  }
+
+  if (protectionState.getDischargingEnabled()) {
+    balancer.enableDischarging();
+  } else {
+    balancer.disableDischarging();
+  }
+
+  // Update to the charger state.
+  if (seconds - lastChargerUpdateSeconds > 5) {
+    lastChargerUpdateSeconds = seconds;
+    
+    // Try to start charging again if allowed.
+    if (protectionState.getChargingEnabled()) {
+      charger.enable();
+      charger.checkSourceAndMPPT();  
+    }
+    
+    // Check the status.
+    charger.checkStatus();
+  }
+
+  // Update to the balancing state.
+  if (seconds - lastBalancerUpdateSeconds > 3) {
+    lastBalancerUpdateSeconds = seconds;
+
+    // Update the balancing state if balancing is allowed.
+    if (protectionState.getBalancingEnabled()) {
+      balancer.updateBalanceRoutine();
+    }
+  }
+}
+
+void restart() {
+  // Make sure we flush the serial buffer before restarting.
+  Serial.flush();
+  delay(10);
+
+  // Set watchdog timer to 15ms and then just wait, letting it trigger,
+  // restarting the attiny.
+  wdt_reset();
+  wdt_enable(WDTO_15MS);
+  while (true);
+}
