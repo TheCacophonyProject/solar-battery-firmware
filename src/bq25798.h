@@ -24,6 +24,44 @@ enum class BQ25798_TEMP {
 #define BQ25798_EN_HIZ             (1u << 2)
 #define BQ25798_EN_MPPT            (1u << 0)
 
+#define VBUS_PRESENT_FLAG        (1u << 0)
+#define VAC1_PRESENT_FLAG        (1u << 1)
+#define VAC2_PRESENT_FLAG        (1u << 2)
+#define POWER_GOOD_FLAG          (1u << 3)
+#define POORSRC_FLAG             (1u << 4)
+#define ADC_DONE_FLAG            (1u << 5)
+
+#define ICO_DONE_FLAG            (1u << 0)
+#define ICO_FAIL_FLAG            (1u << 1)
+#define IINDPM_FLAG              (1u << 2)
+#define VINDPM_FLAG              (1u << 3)
+#define TREG_FLAG                (1u << 4)
+
+#define CHARGE_DONE_FLAG         (1u << 0)
+#define RECHARGE_FLAG            (1u << 1)
+#define PRECHARGE_FLAG           (1u << 2)
+#define FASTCHARGE_FLAG          (1u << 3)
+#define TOPOFF_FLAG              (1u << 4)
+#define TERMINATION_FLAG         (1u << 5)
+
+#define TS_COLD_FLAG             (1u << 3)
+#define TS_COOL_FLAG             (1u << 2)
+#define TS_WARM_FLAG             (1u << 1)
+#define TS_HOT_FLAG              (1u << 0)
+
+#define VBUS_OVP_FLAG            (1u << 0)
+#define IBUS_OCP_FLAG            (1u << 1)
+#define IBAT_OCP_FLAG            (1u << 2)
+#define VSYS_OVP_FLAG            (1u << 3)
+#define VBAT_OVP_FLAG            (1u << 4)
+#define VBAT_UVP_FLAG            (1u << 5)
+
+#define TS_FAULT_FLAG            (1u << 0)
+#define TSHUT_FLAG               (1u << 1)
+#define WATCHDOG_FLAG            (1u << 2)
+#define SAFETY_TIMER_FLAG        (1u << 3)
+
+
 typedef enum {
     BQ25798_REG00_MIN_SYS_VOLTAGE          = 0x00, // REG00_Minimal_System_Voltage
     BQ25798_REG01_CHARGE_VOLTAGE_LIMIT     = 0x01, // REG01_Charge_Voltage_Limit
@@ -113,7 +151,8 @@ class BQ25798 {
 
         uint16_t readTSADC();
         void dumpTempRelated();
-        
+        void dumpFlags();
+
     private:
         bool writeReg(bq25798_reg_t reg, uint8_t data);
         bool readBlock(bq25798_reg_t reg, uint8_t data[], size_t len);

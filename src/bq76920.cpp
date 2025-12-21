@@ -448,6 +448,10 @@ void BQ76920::writeOVandUVTripVoltages() {
 
     // Calculate the target raw value for over voltage.
     uint32_t targetRaw = (uint32_t(CELL_OV_TARGET)*1000 - adcOffset*1000) / adcGain;
+    if (TEST_MAXIMUM_CELL_VOLTAGE) {
+        println("TEST_MAXIMUM_CELL_VOLTAGE");
+        targetRaw = 0x2000;  // This is the lowest possible value for the over voltage protection.
+    }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x2000) {
         println("Target cell over voltage out of range!!!!");
@@ -465,6 +469,10 @@ void BQ76920::writeOVandUVTripVoltages() {
     
     // Calculate the target raw value for under voltage.
     targetRaw = (uint32_t(CELL_UV_TARGET)*1000 - adcOffset*1000) / adcGain;
+    if (TEST_MINIMUM_CELL_VOLTAGE) {
+        println("TEST_MINIMUM_CELL_VOLTAGE");
+        targetRaw = 0x1FFF;  // This is the highest possible value for the under voltage protection.
+    }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x1000) {
         println("Target cell under voltage out of range!!!!");

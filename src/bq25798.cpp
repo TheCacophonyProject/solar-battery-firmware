@@ -489,7 +489,21 @@ void BQ25798::checkStatus() {
     //println(wdtReg, HEX);
 
     // The flags are cleared once they are read.
-    uint8_t flags;
+    dumpFlags();
+    /*
+
+    uint8_t flags[6];
+    readBlock(BQ25798_REG22_CHARGER_FLAG_0, flags, 6);
+    
+    if (flags[0] & VBUS_PRESENT_FLAG) {
+        println("VBUS present");
+    }
+    if (flags[0] & AC1_PRESENT_FLAG) {
+        println("Charger present");
+    } 
+
+    
+    
     readReg(BQ25798_REG22_CHARGER_FLAG_0, &flags);
     if (flags != 0x00) {
         print("Charger flags 0: 0x");
@@ -528,7 +542,9 @@ void BQ25798::checkStatus() {
         println("WDT flag set, triggering charger init sequence");
         init();
     }
+        */
 
+    uint8_t flags;
     // Checking the status
     readReg(BQ25798_REG1F_CHARGER_STATUS_4, &flags);
     if (flags != 0x00) {
@@ -545,6 +561,56 @@ void BQ25798::checkStatus() {
     readReg(0x00, &wdtReg);
     println(wdtReg, HEX);
     */
+}
+
+void BQ25798::dumpFlags() {
+    uint8_t flags[6] = {0};
+
+    // REG22 .. REG27
+    readBlock(BQ25798_REG22_CHARGER_FLAG_0, flags, 6);
+
+    // ---------- REG22 ----------
+    if (flags[0] & VBUS_PRESENT_FLAG)   println("FLAG: VBUS present");
+    if (flags[0] & VAC1_PRESENT_FLAG)   println("FLAG: VAC1 present");
+    if (flags[0] & VAC2_PRESENT_FLAG)   println("FLAG: VAC2 present");
+    if (flags[0] & POWER_GOOD_FLAG)     println("FLAG: Power good");
+    if (flags[0] & POORSRC_FLAG)        println("FLAG: Poor source detected");
+    if (flags[0] & ADC_DONE_FLAG)       println("FLAG: ADC conversion done");
+
+    // ---------- REG23 ----------
+    if (flags[1] & ICO_DONE_FLAG)       println("FLAG: ICO done");
+    if (flags[1] & ICO_FAIL_FLAG)       println("FLAG: ICO failed");
+    if (flags[1] & IINDPM_FLAG)         println("FLAG: Input current limited");
+    if (flags[1] & VINDPM_FLAG)         println("FLAG: Input voltage limited");
+    if (flags[1] & TREG_FLAG)           println("FLAG: Thermal regulation active");
+
+    // ---------- REG24 ----------
+    if (flags[2] & CHARGE_DONE_FLAG)    println("FLAG: Charge done");
+    if (flags[2] & RECHARGE_FLAG)       println("FLAG: Re-charge");
+    if (flags[2] & PRECHARGE_FLAG)      println("FLAG: Pre-charge");
+    if (flags[2] & FASTCHARGE_FLAG)     println("FLAG: Fast charge");
+    if (flags[2] & TOPOFF_FLAG)         println("FLAG: Top-off");
+    if (flags[2] & TERMINATION_FLAG)    println("FLAG: Charge termination");
+
+    // ---------- REG25 ----------
+    if (flags[3] & TS_COLD_FLAG)        println("FLAG: TS cold");
+    if (flags[3] & TS_COOL_FLAG)        println("FLAG: TS cool");
+    if (flags[3] & TS_WARM_FLAG)        println("FLAG: TS warm");
+    if (flags[3] & TS_HOT_FLAG)         println("FLAG: TS hot");
+
+    // ---------- REG26 ----------
+    if (flags[4] & VBUS_OVP_FLAG)       println("FAULT: VBUS over-voltage");
+    if (flags[4] & IBUS_OCP_FLAG)       println("FAULT: IBUS over-current");
+    if (flags[4] & IBAT_OCP_FLAG)       println("FAULT: IBAT over-current");
+    if (flags[4] & VSYS_OVP_FLAG)       println("FAULT: VSYS over-voltage");
+    if (flags[4] & VBAT_OVP_FLAG)       println("FAULT: VBAT over-voltage");
+    if (flags[4] & VBAT_UVP_FLAG)       println("FAULT: VBAT under-voltage");
+
+    // ---------- REG27 ----------
+    if (flags[5] & TS_FAULT_FLAG)       println("FAULT: TS fault");
+    if (flags[5] & TSHUT_FLAG)          println("FAULT: Thermal shutdown");
+    if (flags[5] & WATCHDOG_FLAG)       println("FAULT: Watchdog");
+    if (flags[5] & SAFETY_TIMER_FLAG)   println("FAULT: Safety timer expired");
 }
 
 void BQ25798::setChargeVoltageLimit() {

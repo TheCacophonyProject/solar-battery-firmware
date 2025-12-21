@@ -36,3 +36,42 @@ This was added as sometimes a battery would turn on after charging for a tiny bi
 
 The cells get monitored and the maximum and minimum voltage are compared and if the difference is found to be above a set amount then the higher voltage cell will be discharged.
 We need to add logic to check if we are doing more cell balancing than we should be if the cells are properly balanced and if so report that to the user in some way. This can happen if cells were not properly placed in the battery pack or if cells are mismatched.
+
+## Safety Testing
+
+These are just the tests for testing that the battery acts in a safe manner.
+It does not cover tests that the battery will charge properly using MPPT and such.
+
+### Cell Under Voltage Protection (BQ76920)
+
+Put a cell that is below the minimum voltage and check that it can no longer discharge.
+This should also stop the cell balancing from triggering on that cell.
+Under voltage protection can also get triggered from the BQ29700 but this is not controlled through software.
+You can also set the minim voltage to the maximum value by setting TEST_MINIMUM_CELL_VOLTAGE in bq25798.h
+
+### Cell Over Voltage protection (BQ76920)
+
+Cell Over Voltage Protection should protect the cells from getting charged above a specific voltage.
+Need to test charging from the MPPT charger (BQ25798) and getting back powered through the battery output.
+Over voltage protection can also get triggered from the BQ29700 but this is not controlled through software.
+To help testing this you can use TEST_MAXIMUM_CELL_VOLTAGE in bq25798.h
+
+### Pack over voltage protection
+
+Pack over voltage protection should stop the pack from charging.
+Both through the power in and through getting back powered through the battery output.
+
+### Pack under voltage protection
+
+Pack under voltage protection should stop the pack from discharging and put the battery in sleep state to reduce quiescent current.
+
+### Temperature protection
+
+We have two temperature sensors with the cells, one connected to the BQ76920 and one connected to the BQ76920.
+These need to be checked every so often (1 second at the moment) and then if below or above a set value we need to stop charging.
+Improvements can be made here for reducing the charge/discharge before we get to the upper and lower temperature limits (follow the JEITA recommendations)
+
+### BQ29700 UVP, OVP, OCC, OCD, and SCD
+
+TODO: Figure out a method for testing each [BQ29700](https://www.ti.com/lit/ds/symlink/bq2971.pdf)
+This will probably require a bed of nails test fixture to be practical.

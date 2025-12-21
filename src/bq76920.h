@@ -4,16 +4,27 @@
 #include "Arduino.h"
 #include "i2c.h"
 
+// ======= TESTING PARAMETERS ======= //
+
+// This will set the minimum cell voltage to the highest possible value to make it easier testing 
+// the low cell voltage threshold.
+#define TEST_MINIMUM_CELL_VOLTAGE false
+
+// This will set the maximum cell voltage to the lowest possible value to make it easier testing 
+// the high cell voltage threshold.
+#define TEST_MAXIMUM_CELL_VOLTAGE false
+
+// ======== BQ76920 ADDRESSES  ======== //
+
 #define BQ76920_ADDRESS 0x08
-// Register addresses
 #define CELL_BALANCE_REG 0x01
 #define CC_CFG_REG 0x0B
 
 
-#define CELL_BALANCE_THRESHOLD_START 30
-#define CELL_BALANCE_THRESHOLD_END 20
-#define CELL_OV_TARGET 4200 // 4.2V         # Target of the cell over voltage in mV
-#define CELL_UV_TARGET 3000 // 3.0V         # Target of the cell under voltage in mV
+#define CELL_BALANCE_THRESHOLD_START 30 // Voltage difference between the highest and lowest cell where the balance routine will start (in mV)
+#define CELL_BALANCE_THRESHOLD_END 20   // Voltage difference between the highest and lowest cell where the balance routine will stop (in mV)
+#define CELL_OV_TARGET 4200             // Voltage where OV protection will trigger in mV
+#define CELL_UV_TARGET 3000             // Voltage where UV protection will trigger in mV
 
 #define BQ76920_SYS_STAT_OV (1 << 2)
 #define BQ76920_SYS_STAT_UV (1 << 3)

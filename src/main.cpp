@@ -38,9 +38,11 @@ void setup() {
   // Set pin initial states
   ledOff();
 
-  // Setup serial logging
-  Serial.begin(9600);
-  println("Starting...");
+  #if SERIAL_ENABLE
+    // Setup serial logging
+    Serial.begin(9600);
+    println("Starting...");
+  #endif
 
   // Setup i2C
   Wire.begin();
@@ -114,7 +116,9 @@ void loop() {
   mainLogic();
 
   // Make sure we flush the serial buffer before going to sleep.
-  Serial.flush();
+  #if SERIAL_ENABLE
+    Serial.flush();
+  #endif
 
   // Go to sleep to reduce power. Can be woken up by:
   // - PIT interrupt (every second).
@@ -126,7 +130,7 @@ void loop() {
 ProtectionState protectionState = ProtectionState();
 
 void mainLogic() {
-  // ===== PROTETION CHECKS =====
+  // ===== PROTECTION CHECKS =====
 
   // Create the protection state in the default (healthy) state.
   ProtectionState newProtectionState = ProtectionState(); 
@@ -134,12 +138,15 @@ void mainLogic() {
   // Check the OV and UV state of the cells.
   BQ76920_OV_UV_STATE ovuvState = balancer.getOVUVState();
   if (ovuvState == BQ76920_OV_UV_STATE::OVER_VOLTAGE) {
+    println("Cell OV");
     newProtectionState.disableCharge();
   }
   if (ovuvState == BQ76920_OV_UV_STATE::UNDER_VOLTAGE) {
+    println("Cell UV");
     newProtectionState.disableDischarge();
   }
   if (ovuvState == BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE) {
+    println("Cell UV and OV");
     newProtectionState.disableCharge();
     newProtectionState.disableDischarge();
   }
@@ -147,14 +154,15 @@ void mainLogic() {
   // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from FAULT_Status_0 
   uint8_t faultStatus0 = charger.getReg(bq25798_reg_t::BQ25798_REG20_FAULT_STATUS_0);
   if (faultStatus0 & BQ25798_VBAT_OVP_STAT) {
+    println("VBAT OVP");
     newProtectionState.disableCharge();
   }
 
   // Checking BQ76920 temperature
   float temp1 = balancer.ReadTemp();
-  print("Temperature: ");
-  println(temp1);
   if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
+    print("BQ76920 temp sensor out of range: ");
+    println(temp1);
     newProtectionState.disableCharge();
     newProtectionState.disableDischarge();
     newProtectionState.disableBalancing();
@@ -165,9 +173,14 @@ void mainLogic() {
   }
 
   // Checking BQ25798 temperature
-  // The BQ25798 charger will only set the state to COLD, COOL, WARM, or HOT if 
+  // It seams the BQ25798 charger will only set the state to COLD, COOL, WARM, or HOT if 
+  // it has a good input source for charging. We have the other temperature sensor so we 
+  // can use that for disableing the charger in a discharge state (powering the camera at night).
+  // TODO: We can make manual temperature readings to see if it is COLD, COOL, WARM, or HOT
+  //       so at some point we should implement that.
   BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
   if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
+    println("BQ25798 temp sensor out of range");
     newProtectionState.disableCharge();
     newProtectionState.disableDischarge();
     newProtectionState.disableBalancing();
@@ -181,6 +194,7 @@ void mainLogic() {
 
   // TODO: Checks to add later:
   // Check temperature of the temp+humidity sensor when we have the new board
+  // Pack under voltage, This needs to be checked so we can go into a sleep state to reduce quiescent current.
 
   // ==== Apply protections ====
   if (!protectionState.getBalancingEnabled()) {
@@ -227,10 +241,13 @@ void mainLogic() {
   }
 }
 
+// Restart the attiny.
 void restart() {
   // Make sure we flush the serial buffer before restarting.
-  Serial.flush();
-  delay(10);
+  #if SERIAL_ENABLE
+    Serial.flush();
+    delay(10);
+  #endif
 
   // Set watchdog timer to 15ms and then just wait, letting it trigger,
   // restarting the attiny.
