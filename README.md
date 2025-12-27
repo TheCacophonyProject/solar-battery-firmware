@@ -75,3 +75,8 @@ Improvements can be made here for reducing the charge/discharge before we get to
 
 TODO: Figure out a method for testing each [BQ29700](https://www.ti.com/lit/ds/symlink/bq2971.pdf)
 This will probably require a bed of nails test fixture to be practical.
+
+
+## Recovery from battery vault/ protection mode.
+
+- Cell under voltage protection (BQ76920): Charging is still allowed 

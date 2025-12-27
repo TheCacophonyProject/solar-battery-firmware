@@ -2,7 +2,7 @@
 
 typedef struct {
     float tempC;      // degrees C
-    float res_kohm;   // resistance in kΩ
+    float resKohm;   // resistance in kΩ
 } NtcPoint;
 
 // NCP□XH103 10k, B = 3380K
@@ -47,32 +47,32 @@ static const NtcPoint ntcTable[] = {
 #define NTC_TABLE_SIZE (sizeof(ntcTable) / sizeof(ntcTable[0]))
 
 // Convert resistance (ohms) to temperature (°C)
-float ntc_temp_from_resistance(uint32_t r_ohms)
+float ntcTempFromResistance(uint32_t rOhms)
 {
     //Serial.println(r_ohms);
-    if (r_ohms <= 0.0f) {
+    if (rOhms <= 0.0f) {
         return NAN;
     }
 
-    float r_kohm = r_ohms / 1000.0f;
+    float rKohm = rOhms / 1000.0f;
 
     // Clamp outside table range
-    if (r_kohm >= ntcTable[0].res_kohm) {
+    if (rKohm >= ntcTable[0].resKohm) {
         return ntcTable[0].tempC;                             // <= -40°C
     }
-    if (r_kohm <= ntcTable[NTC_TABLE_SIZE - 1].res_kohm) {
+    if (rKohm <= ntcTable[NTC_TABLE_SIZE - 1].resKohm) {
         return ntcTable[NTC_TABLE_SIZE - 1].tempC;            // >= 125°C
     }
 
     // Find the two surrounding points (R decreases as T increases)
     uint8_t i;
     for (i = 0; i < (uint8_t)NTC_TABLE_SIZE - 1; i++) {
-        float r1 = ntcTable[i].res_kohm;
-        float r2 = ntcTable[i + 1].res_kohm;
+        float r1 = ntcTable[i].resKohm;
+        float r2 = ntcTable[i + 1].resKohm;
 
-        if (r_kohm <= r1 && r_kohm >= r2) {
+        if (rKohm <= r1 && rKohm >= r2) {
             // Log-linear interpolation in resistance
-            float logR  = logf(r_kohm);
+            float logR  = logf(rKohm);
             float logR1 = logf(r1);
             float logR2 = logf(r2);
 

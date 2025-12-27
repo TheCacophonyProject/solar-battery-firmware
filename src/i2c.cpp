@@ -49,7 +49,8 @@ bool I2C::readReg(uint8_t address, uint8_t reg, uint8_t *data) {
 }
 
 bool I2C::endTransmission(bool sendStop) {
-    uint8_t err = Wire.endTransmission();
+    //Wire.flush();
+    uint8_t err = Wire.endTransmission(sendStop);;
     if (err == 0) {
         return true;
     }

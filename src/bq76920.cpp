@@ -2,59 +2,13 @@
 #include "ntcTemp.h"
 #include "util.h"
 
-namespace {
-    // ---- Top-level status + control registers ----
-    constexpr uint8_t REG_SYS_STAT    = 0x00;
-    constexpr uint8_t REG_CELL_BAL1    = 0x01;
-    constexpr uint8_t REG_CELL_BAL2    = 0x02;
-    constexpr uint8_t REG_CELL_BAL3    = 0x03;
-    constexpr uint8_t REG_SYS_CTRL1   = 0x04;
-    constexpr uint8_t REG_SYS_CTRL2   = 0x05;
-    constexpr uint8_t REG_PROTECT1    = 0x06;
-    constexpr uint8_t REG_PROTECT2    = 0x07;
-    constexpr uint8_t REG_PROTECT3    = 0x08;
-    constexpr uint8_t REG_OV_TRIP     = 0x09;
-    constexpr uint8_t REG_UV_TRIP     = 0x0A;
-    constexpr uint8_t REG_CC_CFG      = 0x0B;
-
-    // ---- Cell voltage registers ----
-    constexpr uint8_t REG_VC1_HI      = 0x0C;
-    constexpr uint8_t REG_VC1_LO      = 0x0D;
-    constexpr uint8_t REG_VC2_HI      = 0x0E;
-    constexpr uint8_t REG_VC2_LO      = 0x0F;
-    constexpr uint8_t REG_VC3_HI      = 0x10;
-    constexpr uint8_t REG_VC3_LO      = 0x11;
-    constexpr uint8_t REG_VC4_HI      = 0x12;
-    constexpr uint8_t REG_VC4_LO      = 0x13;
-    constexpr uint8_t REG_VC5_HI      = 0x14;
-    constexpr uint8_t REG_VC5_LO      = 0x15;
-
-    // ---- Pack voltage ----
-    constexpr uint8_t REG_BAT_HI      = 0x2A;
-    constexpr uint8_t REG_BAT_LO      = 0x2B;
-
-    // ---- TS (temperature sense) registers ----
-    constexpr uint8_t REG_TS1_HI      = 0x2C;
-    constexpr uint8_t REG_TS1_LO      = 0x2D;
-
-    // ---- Coulomb counter ----
-    constexpr uint8_t REG_CC_HI       = 0x32;
-    constexpr uint8_t REG_CC_LO       = 0x33;
-
-    // ---- ADC calibration ----
-    constexpr uint8_t REG_ADC_GAIN1    = 0x50;
-    constexpr uint8_t REG_ADC_OFFSET   = 0x51;
-    constexpr uint8_t REG_ADC_GAIN2    = 0x59;
-}
-
-
 #define CELL_COUNT 3
 // Check that we can find the BQ76920 on the I2C bus
 // Returning false if it can not be found.
 bool BQ76920::begin() {
-    writeReg(CC_CFG_REG, 0x19);
+    writeReg(BQ76920_REG0B_CC_CFG, 0x19);
     uint8_t readBackVal = 0;
-    readReg(CC_CFG_REG, &readBackVal);
+    readReg(BQ76920_REG0B_CC_CFG, &readBackVal);
     if (readBackVal != 0x19) {
         return false;
     }
@@ -64,41 +18,41 @@ bool BQ76920::begin() {
 }
 
 void BQ76920::enableCharging() {
-    setBit(0x05, 0, true);
+    setBit(BQ76920_REG05_SYS_CTRL2, 0, true);
 }
 
 void BQ76920::disableCharging() {
-    setBit(0x05, 0, false);
+    setBit(BQ76920_REG05_SYS_CTRL2, 0, false);
 }
 
 void BQ76920::enableDischarging() {
-    setBit(0x05, 1, true);
+    setBit(BQ76920_REG05_SYS_CTRL2, 1, true);
 }
 
 void BQ76920::disableDischarging() {
-    setBit(0x05, 1, false);
+    setBit(BQ76920_REG05_SYS_CTRL2, 1, false);
 }
 
-uint8_t BQ76920::getReg(BQ76920_REG reg) {
-    uint8_t data;
-    readReg(uint8_t(reg), &data);
-    return data;
-}
+// uint8_t BQ76920::getReg(bq76920_reg_t reg) {
+//     uint8_t data;
+//     readReg(reg, &data);
+//     return data;
+// }
 
 // Returns the temperature in °C
 // There is no automatic logic on the BQ76920 to react to temperatures that are too high
 // or low so we need to program stopping/reducing the charging/discharging current.
 // 
-float BQ76920::ReadTemp() {
+float BQ76920::readTemp() {
     // Set the TEMP_SEL bit to 1 to read the external temperature sensor
-    setBit(REG_SYS_CTRL1, 3, true);
+    setBit(BQ76920_REG04_SYS_CTRL1, 3, true);
 
     uint8_t data[2] = {};
-    readBlock(0x2C, data, 2);
+    readBlock(BQ76920_REG2C_TS1_HI, data, 2);
     uint32_t rawADC = (data[0] & 0b00111111)<< 8 | data[1];
     uint32_t RTADC = (rawADC * 382)/1000;
     uint32_t Resistance = (10000 * RTADC)/(3300-RTADC);
-    float temp = ntc_temp_from_resistance(Resistance);
+    float temp = ntcTempFromResistance(Resistance);
     if (temp > 60.0 || temp < 5.0) {
         print("Temperature out of range: ");
         println(temp);
@@ -106,7 +60,7 @@ float BQ76920::ReadTemp() {
     return temp;
 }
 
-bool BQ76920::writeReg(uint8_t reg, uint8_t data) {
+bool BQ76920::writeReg(bq76920_reg_t reg, uint8_t data) {
     // Need to handle the CRC.
     // {(write address) 0x01, (register) reg, (data) data}
     // The CRC is calculate from the I2C write address (normal address << 1), the register and the data itself.
@@ -116,7 +70,7 @@ bool BQ76920::writeReg(uint8_t reg, uint8_t data) {
     return i2c_.write(BQ76920_ADDRESS, reg, writeBytes, 2);
 }
 
-bool BQ76920::writeBlock(uint8_t reg, uint8_t data[], uint8_t len) {
+bool BQ76920::writeBlock(bq76920_reg_t reg, uint8_t data[], uint8_t len) {
     uint8_t writeData[len*2] = {};
     
     // For the first byte calculate the CRC from the I2C address write address and the data.
@@ -133,7 +87,7 @@ bool BQ76920::writeBlock(uint8_t reg, uint8_t data[], uint8_t len) {
 
 }
 
-bool BQ76920::readReg(uint8_t reg, uint8_t *data) {
+bool BQ76920::readReg(bq76920_reg_t reg, uint8_t *data) {
     uint8_t readData[2];
     i2c_.read(BQ76920_ADDRESS, reg, readData, 2);
     uint8_t readCRC = readData[1];
@@ -148,7 +102,7 @@ bool BQ76920::readReg(uint8_t reg, uint8_t *data) {
     return true;
 }
 
-bool BQ76920::readBlock(uint8_t reg, uint8_t data[], size_t len) {
+bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
     // Need a custom read function to handle the CRC.
     // We need to read twice the bytes to get the CRC bytes also.
     uint8_t dataAndCRC[2*len];
@@ -196,12 +150,12 @@ uint8_t BQ76920::crc8_atm(uint8_t *data, size_t len) {
 
 void BQ76920::getADCGainAndOffset() {
     uint8_t adcOffsetRegVal;
-    adcOffset = (int8_t) readReg(0x51, &adcOffsetRegVal);  // convert from 2's complement
+    adcOffset = (int8_t) readReg(BQ76920_REG51_ADC_OFFSET, &adcOffsetRegVal);  // convert from 2's complement
 
     uint8_t adcGainRegVal1;
     uint8_t adcGainRegVal2;
-    readReg(0x50, &adcGainRegVal1);
-    readReg(0x52, &adcGainRegVal2);
+    readReg(BQ76920_REG50_ADC_GAIN1, &adcGainRegVal1);
+    readReg(BQ76920_REG59_ADC_GAIN2, &adcGainRegVal2);
     adcGain = 365 + (((adcGainRegVal1 & B00001100) << 1) | ((adcGainRegVal2 & B11100000) >> 5)); // uV/LSB
 }
 
@@ -209,7 +163,8 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
     // TOOD: Add hysteresis for cell recovery so as to not trip right away again.
 
     // Get state if there is a UV or OV trip.
-    uint8_t sysStat = getReg(BQ76920_REG::SYS_STAT);
+    uint8_t sysStat;
+    readReg(BQ76920_REG00_SYS_STAT, &sysStat);
     if (!(sysStat & BQ76920_SYS_STAT_OV) && !(sysStat & BQ76920_SYS_STAT_UV)) {
         // No OV or UV trip, we are healthy.
         return BQ76920_OV_UV_STATE::HEALTHY;
@@ -254,24 +209,24 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
     }
     
     // No unhealthy state is found, clear the OV and UV trip bits.
-    writeReg(uint8_t(BQ76920_REG::SYS_STAT), BQ76920_SYS_STAT_OV | BQ76920_SYS_STAT_UV);
+    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_OV | BQ76920_SYS_STAT_UV);
     return BQ76920_OV_UV_STATE::HEALTHY;
 }
 
 bool BQ76920::getCellVoltages() {
     uint8_t data[10];
-    if (!readBlock(0x0C, data, 10)) {
+    if (!readBlock(BQ76920_REG0C_VC1_HI, data, 10)) {
         println("Error reading cell voltages");
         return false;
     }
 
     for (int i = 0; i < 5; i++) {
-        cellMilliVoltages[i] = CalculateADC(data[i*2], data[i*2+1]);
+        cellMilliVoltages[i] = calculateADC(data[i*2], data[i*2+1]);
     }
     return true;
 }
 
-uint16_t BQ76920::CalculateADC(uint8_t msb, uint8_t lsb) {
+uint16_t BQ76920::calculateADC(uint8_t msb, uint8_t lsb) {
     uint32_t adcRaw = (msb & 0b00111111) << 8 | lsb;
     // adcRaw (no unit) * adcGain (uV/LSB) + adcOffset (mV)
     uint32_t microVolts = adcRaw * adcGain + adcOffset*1000;
@@ -280,7 +235,7 @@ uint16_t BQ76920::CalculateADC(uint8_t msb, uint8_t lsb) {
 
 void BQ76920::stopCellBalancing() {
     // Stop any cells from balancing.
-    writeReg(CELL_BALANCE_REG, 0x00);
+    writeReg(BQ76920_REG01_CELL_BAL1, 0x00);
 }
 
 void BQ76920::updateBalanceRoutine() {
@@ -348,10 +303,10 @@ void BQ76920::updateBalanceRoutine() {
             println(minVoltage);
         }
         // Drain the max cell.
-        writeReg(CELL_BALANCE_REG, 0x01 << maxVoltageCell);
+        writeReg(BQ76920_REG01_CELL_BAL1, 0x01 << maxVoltageCell);
     } else {
         // Stop any cells from balancing.
-        writeReg(CELL_BALANCE_REG, 0x00);
+        writeReg(BQ76920_REG01_CELL_BAL1, 0x00);
     }
 }
 
@@ -361,75 +316,7 @@ bool BQ76920::cellShouldBePopulated(int cell) {
     return values[cell];
 }
 
-void BQ76920::readChargeDischargeBits() {
-    uint8_t regData;
-    readReg(0x05, &regData);
-
-    bool DSG_ON = regData & 1<<1;
-    print("DSG_ON: ");
-    println(DSG_ON);
-    bool CHG_ON = regData & 1<<0;
-    print("CHG_ON: ");
-    println(CHG_ON);
-}
-
-void BQ76920::readStatus() {
-    return;
-    uint8_t statusRegData;
-    readReg(0x00, &statusRegData);
-    bool ccReady = statusRegData & 1<<7;
-    print("CC ready: ");
-    println(ccReady);
-
-
-    bool DEVICE_XREADY = statusRegData & 1<<5;
-    print("DEVICE_XREADY: ");
-    println(DEVICE_XREADY);
-
-
-    bool OVRD_ALERT = statusRegData & 1<<4;
-    print("OVRD_ALERT: ");
-    println(OVRD_ALERT);
-
-
-    bool UV = statusRegData & 1<<3;
-    print("UV: ");
-    println(UV);
-
-    bool OV = statusRegData & 1<<2;
-    print("OV: ");
-    println(OV);
-
-    bool SCD = statusRegData & 1<<1;
-    print("SCD: ");
-    println(SCD);
-
-    bool OCD = statusRegData & 1<<0;
-    print("OCD: ");
-    println(OCD);
-
-    getCellVoltages();
-    /*
-    for (int i = 0; i < 5; i++) {
-        print("Cell ");
-        print(i);
-        print(": ");
-        println(cellMilliVoltages[i]);
-    }
-        */
-}
-
-void BQ76920::enableChargeAndDischarge() {
-    setBit(0x05, 1, true);
-    setBit(0x05, 0, true);
-}
-
-void BQ76920::disableChargeAndDischarge() {
-    setBit(0x05, 1, false);
-    setBit(0x05, 0, false);
-}
-
-bool BQ76920::setBit(uint8_t reg, uint8_t bit, bool value) {
+bool BQ76920::setBit(bq76920_reg_t reg, uint8_t bit, bool value) {
     uint8_t regValue;
     readReg(reg, &regValue);
 
@@ -489,13 +376,13 @@ void BQ76920::writeOVandUVTripVoltages() {
     writeData[1] = (targetRaw >> 4) & 0xFF;
 
     // Write to the OV and UV registers
-    if (!writeBlock(0x09, writeData, 2)) {
+    if (!writeBlock(BQ76920_REG09_OV_TRIP, writeData, 2)) {
         println("Failed to write OV and UV trip voltages!!!!");
     }
     
     // Read back the OV and UV trip voltages as a way to check the write/math.
     uint8_t blockData[2];
-    if (!readBlock(0x09, blockData, 2)) {
+    if (!readBlock(BQ76920_REG09_OV_TRIP, blockData, 2)) {
         println("Failed to read OV and UV trip voltages!!!!");
         return;
     }
@@ -513,36 +400,9 @@ void BQ76920::writeOVandUVTripVoltages() {
     println(cellUVMilliVoltage);
 }
 
-void BQ76920::clearOVandUVTrip() {
-    // Update cell protection.
-
-    // Check SYS status 1.
-    // To clear the bits, write 1 to them.
-
-    
-
-
-
-    // 1) Check the UV and OV flags.
-    // 2) If either are tripped, read the cell voltages and 
-
-    // 1) Read the cell voltages.
-    // 3)  
-
-
-    // Check that all of the cells are in range, then clear the OV and UV trip.
-    if (!getCellVoltages()) {
-        println("Failed to read cell voltages");
-        println("Cannot clear OV and UV trip");
-        return;
-    }
-
-
-    if (!setBit(0x00, 3, true)) {
-        println("Failed to clear OV trip");
-    }
-    if (!setBit(0x00, 2, true)) {
-        println("Failed to clear UV trip");
-    }
+void BQ76920::shipMode() {
+    stopCellBalancing();
+    writeReg(BQ76920_REG04_SYS_CTRL1, 0x00);
+    writeReg(BQ76920_REG04_SYS_CTRL1, 0x01);
+    writeReg(BQ76920_REG04_SYS_CTRL1, 0x02);
 }
-

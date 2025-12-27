@@ -18,16 +18,32 @@ BQ76920 balancer;
 #define PIN_LED PIN_PB5
 #define PIN_TS1 PIN_PA7       // BQ76920 TS1
 #define PIN_ALERT PIN_PA6     // BQ76920 ALERT
-#define PIN_INTERRUPT PIN_PA4 // BQ25798 Interrupt
+#define PIN_INTERRUPT PIN_PA2 // BQ25798 Interrupt
 #define PIN_CE PIN_PA5        // BQ25798 ~Charge Enable
 
 uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
+uint32_t lastChargerUpdateSeconds = 0;
+uint32_t lastBalancerUpdateSeconds = 0;
+bool sleepModeEnabled = false;
+uint32_t lastInputSourceTime = 0;
+bool chargerInterrupted = false;
+bool balancerInterrupted = false;
+
+
+void enableSleepMode() {
+  charger.shipMode();
+  balancer.shipMode();
+  println("sleep mode");
+  #if SERIAL_ENABLE
+    Serial.flush();
+  #endif
+  sleepModeEnabled = true;
+}
 
 void setup() {
   // Setup WDT
   wdt_reset();
-  wdt_disable();
-  wdt_enable(WDT_DURATION);
+  _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_2KCLK_gc);
 
   // Set pins modes
   pinMode(PIN_LED, OUTPUT);
@@ -55,18 +71,10 @@ void setup() {
   println(F("Charger BQ25798 found!"));
 
   // Try to find the BQ76920 (cell balancer)
+  wakeUpBalancer();
   if (!balancer.begin()) {
-    println(F("Could not see BQ76920, will try driving TS1 low to try enabling it."));
-    // Set to output, drive high, then back to input.
-    pinMode(PIN_TS1, OUTPUT);
-    digitalWrite(PIN_TS1, HIGH);
-    delay(100);
-    pinMode(PIN_TS1, INPUT);
-    delay(100);
-    if (!balancer.begin()) {
-      println(F("Could not find the BQ76920"));
-      restart();
-    }
+    println(F("Could not find the BQ76920"));
+    restart();
   }
   println(F("Balancer BQ76920 found!"));
   
@@ -81,12 +89,24 @@ void setup() {
   sleep_enable();
 }
 
+void wakeUpBalancer() {
+  pinMode(PIN_TS1, OUTPUT);
+  digitalWrite(PIN_TS1, HIGH);
+  delay(100);
+  pinMode(PIN_TS1, INPUT);
+  delay(100);
+}
+
 void chargerInterrupt() {
-  println("Charger interrupt");
+  if (seconds - charger.poorSourceTime > 10) {
+    return;
+  }
+  chargerInterrupted = true;
 }
 
 void balancerInterrupt() {
-  println("Balancer interrupt");
+  
+  balancerInterrupted = true;
 }
 
 void ledOn() {
@@ -97,39 +117,78 @@ void ledOff() {
   digitalWrite(PIN_LED, LOW);
 }
 
-uint32_t lastChargerUpdateSeconds = 0;
-uint32_t lastBalancerUpdateSeconds = 0;
-
 void loop() {
   // Update the time in seconds.
   seconds = getSeconds();
 
   // Reset WDT to prevent it from triggering.
-  wdt_reset(); 
+  wdt_reset();
 
-  // Little heartbeat flash to show we are alive.
-  ledOn();
-  delay(1);
-  ledOff();
+  if (chargerInterrupted) {
+    println("Charger interrupt");
+    charger.dumpFlags();
+    chargerInterrupted = false;
+  }
+
+  if (balancerInterrupted) {
+    println("Balancer interrupt");
+    balancerInterrupted = false;
+  }
+
 
   // Run the main logic. This is done in a separate function so it can return early if needed.  
-  mainLogic();
-
+  if (sleepModeEnabled) {
+    sleepMode();
+  } else {
+    mainLogic();
+  }
+  
   // Make sure we flush the serial buffer before going to sleep.
   #if SERIAL_ENABLE
     Serial.flush();
   #endif
 
+  // FLush the Wire, this makes sure that it goes into a proper sleep state.
+  Wire.flush();
+
   // Go to sleep to reduce power. Can be woken up by:
   // - PIT interrupt (every second).
   // - BQ76920 ALERT pin.
   // - BQ25798 Interrupt pin.
+  wdt_reset();
   sleep_mode();
 }
 
 ProtectionState protectionState = ProtectionState();
 
+void sleepMode() {
+  // Little heartbeat flash to show we are alive.
+  if (seconds%30 == 0) {
+    ledOn();
+    delay(1);
+    ledOff();
+  }
+
+
+  if (seconds % 10 == 0 || chargerInterrupted || balancerInterrupted) {
+    // ===== Checks to see if we need to wake up from sleep mode =====
+
+    // Check if we have an input source.
+    if (charger.haveInputSource()) {
+      println("Have input source, leaving sleep mode");
+      wakeUpBalancer();
+      sleepModeEnabled = false;
+      return;
+    }
+  }
+}
+
 void mainLogic() {
+  // Little heartbeat flash to show we are alive.
+  ledOn();
+  delay(1);
+  ledOff();
+
   // ===== PROTECTION CHECKS =====
 
   // Create the protection state in the default (healthy) state.
@@ -152,14 +211,13 @@ void mainLogic() {
   }
   
   // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from FAULT_Status_0 
-  uint8_t faultStatus0 = charger.getReg(bq25798_reg_t::BQ25798_REG20_FAULT_STATUS_0);
-  if (faultStatus0 & BQ25798_VBAT_OVP_STAT) {
+  if (charger.vbatOvpStat()) {
     println("VBAT OVP");
     newProtectionState.disableCharge();
   }
 
   // Checking BQ76920 temperature
-  float temp1 = balancer.ReadTemp();
+  float temp1 = balancer.readTemp();
   if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
     print("BQ76920 temp sensor out of range: ");
     println(temp1);
@@ -216,6 +274,10 @@ void mainLogic() {
     balancer.disableDischarging();
   }
 
+  // Check if we can go into a deep sleep mode for the balancer and charger.
+
+  // ===== UPDATE CHECKS =====
+
   // Update to the charger state.
   if (seconds - lastChargerUpdateSeconds > 5) {
     lastChargerUpdateSeconds = seconds;
@@ -239,19 +301,28 @@ void mainLogic() {
       balancer.updateBalanceRoutine();
     }
   }
+
+  // === Check if we need to go into a sleep mode.
+  if (charger.haveInputSource() && !charger.inHighInputImpedance()) {
+    lastInputSourceTime = seconds;
+  }
+
+  // Enable sleep mode if we don't have an input source for 20 seconds.
+  if (lastBalancerUpdateSeconds > lastInputSourceTime + 20) {
+    enableSleepMode();
+  }
+
 }
 
-// Restart the attiny.
 void restart() {
-  // Make sure we flush the serial buffer before restarting.
   #if SERIAL_ENABLE
+    println("Restarting...");
     Serial.flush();
-    delay(10);
   #endif
 
-  // Set watchdog timer to 15ms and then just wait, letting it trigger,
-  // restarting the attiny.
-  wdt_reset();
-  wdt_enable(WDTO_15MS);
-  while (true);
+  delay(100);
+
+  cli();
+  _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
+  while (1) { }
 }

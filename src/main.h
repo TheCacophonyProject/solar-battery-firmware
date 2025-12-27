@@ -32,5 +32,7 @@ void mainLogic();
 void restart();
 void chargerInterrupt();
 void balancerInterrupt();
+void sleepMode();
+void wakeUpBalancer();
 
 #endif

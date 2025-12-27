@@ -134,30 +134,23 @@ class BQ25798 {
     public:
         bool begin(int);
         void sourceRetry();
-        void enableMPPT();
-        void setVOCRate();
-        void setChargeVoltageLimit();
-        void setInputAndChargeLimits();
         void checkStatus();
         void init();
-        uint8_t getReg(bq25798_reg_t);
-        //void SetBatteryChargeCurrentLimit();
-        BQ25798_TEMP getTemperatureStatus();
         void enable();
         void disable();
         void checkSourceAndMPPT();
-
-        void readADC();
-
-        uint16_t readTSADC();
-        void dumpTempRelated();
+        void shipMode();
+        bool haveInputSource();
+        bool vbatOvpStat();
+        BQ25798_TEMP getTemperatureStatus();
+        uint32_t poorSourceTime = 0;
         void dumpFlags();
-
+        bool inHighInputImpedance();
     private:
         bool writeReg(bq25798_reg_t reg, uint8_t data);
-        bool readBlock(bq25798_reg_t reg, uint8_t data[], size_t len);
         bool writeBlock(bq25798_reg_t reg, uint8_t data[], size_t len);
         bool readReg(bq25798_reg_t reg, uint8_t *data);
+        bool readBlock(bq25798_reg_t reg, uint8_t data[], size_t len);
         bool setBit(bq25798_reg_t reg, uint8_t bit, bool value);
         bool setBits(bq25798_reg_t reg, uint8_t val, uint8_t offset, uint8_t len);
         bool writeWord(bq25798_reg_t reg, uint16_t data, bool check=false);
@@ -165,8 +158,9 @@ class BQ25798 {
         I2C i2c_; 
         uint8_t chargeStatus;
         uint8_t vbusStatus;
-        int16_t chargingCurrent;
         int enablePin;
+        void readADC();
+        uint16_t readTSADC();
 };
 
 #endif
