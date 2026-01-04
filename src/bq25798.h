@@ -146,6 +146,14 @@ class BQ25798 {
         uint32_t poorSourceTime = 0;
         void dumpFlags();
         bool inHighInputImpedance();
+
+        bool poorSourceFlag;
+        bool vbusPresentFlag;
+
+        void clearFlags();
+
+        void disableVBUSWakeup();
+        void enableVBUSWakeup();
     private:
         bool writeReg(bq25798_reg_t reg, uint8_t data);
         bool writeBlock(bq25798_reg_t reg, uint8_t data[], size_t len);

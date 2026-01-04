@@ -26,13 +26,13 @@ uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
 bool sleepModeEnabled = false;
 uint32_t lastInputSourceTime = 0;
-bool chargerInterrupted = false;
-bool balancerInterrupted = false;
+volatile bool chargerInterrupted = false;
+volatile bool balancerInterrupted = false;
 
 
 void enableSleepMode() {
   charger.shipMode();
-  balancer.shipMode();
+  //balancer.shipMode(); // Can't put the balancer in ship mode as that disables the output.
   println("sleep mode");
   #if SERIAL_ENABLE
     Serial.flush();
@@ -92,20 +92,16 @@ void setup() {
 void wakeUpBalancer() {
   pinMode(PIN_TS1, OUTPUT);
   digitalWrite(PIN_TS1, HIGH);
-  delay(100);
+  delay(300);
   pinMode(PIN_TS1, INPUT);
-  delay(100);
+  delay(300);
 }
 
 void chargerInterrupt() {
-  if (seconds - charger.poorSourceTime > 10) {
-    return;
-  }
   chargerInterrupted = true;
 }
 
 void balancerInterrupt() {
-  
   balancerInterrupted = true;
 }
 
@@ -142,6 +138,10 @@ void loop() {
   } else {
     mainLogic();
   }
+
+  // When the charger reads the flags they get reset. So we store them to 
+  // a local variable so they can be used throughout the loop but we then want to clear them.
+  charger.clearFlags();
   
   // Make sure we flush the serial buffer before going to sleep.
   #if SERIAL_ENABLE
@@ -169,6 +169,12 @@ void sleepMode() {
     ledOff();
   }
 
+  if (seconds % 10 == 0) {
+    // Every 10 seconds we alow it to interrupt the attiny if there is a new source.
+    // We don't want this always active as when there is a poor source it will constantly be 
+    // waking up the attiny using up the power in the process.
+    charger.enableVBUSWakeup();
+  }
 
   if (seconds % 10 == 0 || chargerInterrupted || balancerInterrupted) {
     // ===== Checks to see if we need to wake up from sleep mode =====
@@ -179,7 +185,16 @@ void sleepMode() {
       wakeUpBalancer();
       sleepModeEnabled = false;
       return;
+    } else {
+      // If we are not waking up from sleep the put the charger chip back into ship mode.
+      charger.shipMode();
     }
+  }
+
+  if (charger.poorSourceFlag) {
+    // If a poor source flag is set then we will disable it waking up from VBUS_PRESENT as
+    // a poor source can continuously wake up the chip from VBUS_PRESENT.
+    charger.disableVBUSWakeup();
   }
 }
 
@@ -308,10 +323,16 @@ void mainLogic() {
   }
 
   // Enable sleep mode if we don't have an input source for 20 seconds.
-  if (lastBalancerUpdateSeconds > lastInputSourceTime + 20) {
+  if (seconds > lastInputSourceTime + 20) {
+    println("No input for 20 seconds, going into sleep mode");
     enableSleepMode();
   }
 
+  if (charger.poorSourceFlag) {
+    println("Poor source, going into sleep mode");
+    charger.disableVBUSWakeup();
+    enableSleepMode();
+  }
 }
 
 void restart() {

@@ -108,6 +108,17 @@ void BQ25798::checkSourceAndMPPT() {
     }
 }
 
+void BQ25798::disableVBUSWakeup() {
+    println("Disable VBUS wakeup");
+    writeReg(BQ25798_REG28_CHARGER_MASK_0, 0x11);
+
+};
+
+void BQ25798::enableVBUSWakeup() {
+    println("Enable VBUS wakeup");
+    writeReg(BQ25798_REG28_CHARGER_MASK_0, 0x00);
+};
+
 void BQ25798::init() {
     println("Running initialization");
     
@@ -220,9 +231,11 @@ void BQ25798::init() {
 
     // 0x28 REG28_Charger_Mask_0 -- Leave as default.
 
-    // 0x29 REG29_Charger_Mask_1 -- Leave as default.
+    // 0x29 REG29_Charger_Mask_1 -- Need to program.
+    // TREG_MASK bit is set so we don't get a INT pulse from it.
+    writeReg(BQ25798_REG29_CHARGER_MASK_1, 0x04);
 
-    // 0x2A REG2A_Charger_Mask_2 -- Leave as default.
+    // 0x2A REG2A_Charger_Mask_2 -- Need to program.
     // ADC conversion done does NOT produce INT pulse
     writeReg(BQ25798_REG2A_CHARGER_MASK_2, 0x20);
 
@@ -390,6 +403,11 @@ void BQ25798::checkStatus() {
     setBit(BQ25798_REG10_CHARGER_CONTROL_1, 3, true);
 }
 
+void BQ25798::clearFlags() {
+    poorSourceFlag = false;
+    vbusPresentFlag = false;
+}
+
 bool BQ25798::vbatOvpStat() {
     uint8_t faultStatus0;
     readReg(BQ25798_REG20_FAULT_STATUS_0, &faultStatus0);
@@ -403,13 +421,16 @@ void BQ25798::dumpFlags() {
     readBlock(BQ25798_REG22_CHARGER_FLAG_0, flags, 6);
 
     // ---------- REG22 ----------
-    if (flags[0] & VBUS_PRESENT_FLAG)   println("FLAG: VBUS present");
-    if (flags[0] & VAC1_PRESENT_FLAG)   println("FLAG: VAC1 present");
-    if (flags[0] & VAC2_PRESENT_FLAG)   println("FLAG: VAC2 present");
+    if (flags[0] & VBUS_PRESENT_FLAG)  {
+        println("FLAG: VBUS present");
+        vbusPresentFlag = true;
+    }
+    //if (flags[0] & VAC1_PRESENT_FLAG)   println("FLAG: VAC1 present");
+    //if (flags[0] & VAC2_PRESENT_FLAG)   println("FLAG: VAC2 present");
     if (flags[0] & POWER_GOOD_FLAG)     println("FLAG: Power good");
     if (flags[0] & POORSRC_FLAG) {
         println("FLAG: Poor source detected");
-        getSeconds();
+        poorSourceFlag = true;
     }
     if (flags[0] & ADC_DONE_FLAG)       println("FLAG: ADC conversion done");
 
