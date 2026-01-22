@@ -50,6 +50,7 @@ void setup() {
   pinMode(PIN_TS1, INPUT);
   pinMode(PIN_ALERT, INPUT);
   pinMode(PIN_INTERRUPT, INPUT_PULLUP);
+  pinMode(BUZZER_PIN, OUTPUT);
 
   // Set pin initial states
   ledOff();
@@ -59,6 +60,41 @@ void setup() {
     Serial.begin(9600);
     println("Starting...");
   #endif
+
+  // Start up buzzer noise.
+  buzzer_pin_init();
+  int d = 200;
+  int d1 = 10;
+  buzzer_on(1000);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
+  buzzer_on(1200);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
+  buzzer_on(1400);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
+  buzzer_on(1600);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
+  buzzer_on(1800);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
+  buzzer_on(2000);
+  delay(d);
+  buzzer_off();
+  delay(d1);
+  wdt_reset();
 
   // Setup i2C
   Wire.begin();

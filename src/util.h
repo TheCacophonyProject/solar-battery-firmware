@@ -5,6 +5,9 @@
 
 void setupPIT();
 uint32_t getSeconds();
+void buzzer_on(uint32_t freq_hz);
+void buzzer_off();
+void buzzer_pin_init();
 
 #define SERIAL_ENABLE 1
 
