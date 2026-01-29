@@ -1,10 +1,7 @@
 #include "i2c.h"
 #include "util.h"
 
-
-void I2C::setup() {
-    Wire.begin();
-}
+void I2C::setup() { Wire.begin(); }
 
 bool I2C::write(uint8_t address, uint8_t reg, uint8_t data[], uint8_t len) {
     Wire.beginTransmission(address);
@@ -29,9 +26,9 @@ bool I2C::read(uint8_t address, uint8_t reg, uint8_t data[], uint8_t len) {
     }
     // End the transmission but don't send the stop bit as we want to do the read.
     uint8_t err = endTransmission(false);
-    
+
     // Begin the read
-    //Wire.beginTransmission(address);
+    // Wire.beginTransmission(address);
     Wire.requestFrom(address, len);
     for (uint8_t i = 0; i < len; i++) {
         data[i] = Wire.read();
@@ -49,15 +46,16 @@ bool I2C::readReg(uint8_t address, uint8_t reg, uint8_t *data) {
 }
 
 bool I2C::endTransmission(bool sendStop) {
-    //Wire.flush();
-    uint8_t err = Wire.endTransmission(sendStop);;
+    // Wire.flush();
+    uint8_t err = Wire.endTransmission(sendStop);
+    ;
     if (err == 0) {
         return true;
     }
 
     // Something went wrong..
     switch (err) {
-        print("Wire error: 0x"); 
+        print("Wire error: 0x");
         println(err, HEX);
 
         /*

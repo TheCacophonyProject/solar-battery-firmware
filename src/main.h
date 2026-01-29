@@ -5,15 +5,14 @@
 
 // TODO: Add charge voltage limits for the temperature.
 
-// Below is the temperature points for the battery and what is allowed between each point.
-// Values are in Celsius.
+// Below is the temperature points for the battery and what is allowed between each point. Values are in Celsius.
 
 //    ^
 //    |-- No charging allowed. Too cold.
 //    |
 #define TEMPERATURE_POINT_1 0
 //    |
-//    |-- Reduced charging/discharging current. 
+//    |-- Reduced charging/discharging current.
 //    |
 #define TEMPERATURE_POINT_2 10
 //    |
@@ -30,7 +29,7 @@
 
 void ledOn();
 void ledOff();
-void mainLogic();
+void mainMode();
 void restart();
 void chargerInterrupt();
 void balancerInterrupt();

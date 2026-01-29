@@ -1,91 +1,168 @@
-#include "util.h"
 #include "protection.h"
+#include "util.h"
 
-// ==== Functions to set battery pack protection states ====
+ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_) : charger(charger_), balancer(balancer_) {}
 
-void ProtectionState::disableCharge() {
-    chargeEnabled = false;
-    healthy = false;
-}
+bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
-void ProtectionState::disableDischarge() {
-    dischargeEnabled = false;
-    healthy = false;
-}
+bool ProtectionState::isBalancingEnabled() { return balancingEnabled; }
 
-void ProtectionState::disableBalancing() {
-    balancingEnabled = false;
-    healthy = false;
-}
+// update will run the checks and update the protection state for the battery pack. If the battery pack is not charging
+// it can be set to not run the checks for the charger (saving power consumption).
+void ProtectionState::update(bool runChargerChecks) {
 
-void ProtectionState::limitChargeCurrent(uint16_t mA) {
-    // Only allow to reduce the charge current.
-    // This is to protect from one state setting it low then a other state setting it higher than it should be.
-    maxChargeCurrent = min(chargeEnabled, mA);
-    healthy = false;
-}
+    // Set the new initial values as the default ones.
+    bool newChargeEnabled = true;
+    bool newDischargeEnabled = true;
+    bool newBalancingEnabled = true;
+    bool newHealthy = true;
 
-// ==== Functions to check what the battery pack protection state should be ====
+    // Check if we have recovered from a cell under voltage.
+    // This has some hysteresis to prevent cells close to under voltage turning
+    // back on too quickly.
+    if (cellUnderVoltageProtection && balancer.uvCellRecovered()) {
+        println("UV cell recovered");
+        cellUnderVoltageProtection = false;
+    }
+    if (cellUnderVoltageProtection) {
+        newDischargeEnabled = false;
+        // We don't need to limit balancing here as balancing will have its own
+        // limit on how low it can discharge the cell to. // TODO, add` this
+        newBalancingEnabled = false;
+    }
 
-bool ProtectionState::getChargingEnabled() {
-    return chargeEnabled;
-}
+    // Check the Over Voltage and Under Voltage state of the cells.
+    BQ76920_OV_UV_STATE ovuvState = balancer.getOVUVState();
+    switch (ovuvState) {
+    case BQ76920_OV_UV_STATE::OVER_VOLTAGE:
+        println("Cell OV");
+        newChargeEnabled = false;
+        break;
+    case BQ76920_OV_UV_STATE::UNDER_VOLTAGE:
+        println("Cell UV");
+        cellUnderVoltageProtection = true;
+        newDischargeEnabled = false;
+        break;
+    case BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE:
+        // Some cells are under voltage and some are over voltage. This would suggest something has done very wrong.
+        // TODO: Decide what we want to do here, beep some sort of error tone?
+        println("Cell UV and OV");
+        newChargeEnabled = false;
+        newDischargeEnabled = false;
+        break;
+    }
 
-bool ProtectionState::getDischargingEnabled() {
-    return dischargeEnabled;
-}
+    // Checking BQ76920 external temperature sensor.
+    float temp1 = balancer.readTemp();
+    if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
+        print("BQ76920 temp out of range: ");
+        println(temp1);
+        newChargeEnabled = false;
+        newDischargeEnabled = false;
+        newBalancingEnabled = false;
+    }
 
-bool ProtectionState::getBalancingEnabled() {
-    return balancingEnabled;
-}
+    // ===== Running the charger checks =======
+    if (runChargerChecks) {
+        // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from
+        // FAULT_Status_0
+        if (charger.vbatOvpStat()) {
+            println("VBAT OVP");
+            newChargeEnabled = false;
+        }
 
-uint16_t ProtectionState::getChargeLimit() {
-    return maxChargeCurrent;
-}
+        // Checking BQ25798 external temperature sensor.
+        // It seams the BQ25798 charger will only set the state to COLD, COOL, WARM, or HOT if it has a good input
+        // source for charging. We have other temperature sensors so we can check those. when we don't have a good input
+        // source.
+        // TODO: We can make manual temperature readings to see if it is COLD, COOL, WARM, or HOT so at some point we
+        // should implement that.
+        BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
+        if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
+            println("BQ25798 temp sensor out of range");
+            newChargeEnabled = false;
+            newDischargeEnabled = false;
+            newBalancingEnabled = false;
+        }
+    }
 
-// ==== Logging function ====
-void ProtectionState::logStateChange(ProtectionState newState) {
+    // TODO: Run more checks
+    //      - Using the I2C temp/humidity sensor.
+    //      - Using the internal temperature sensors on the chips that have them.
+
+    // Log the changes from the old state to the new state
     bool changes = false;
-    if (newState.healthy != healthy) {
+    if (newHealthy != healthy) {
         changes = true;
-        if (newState.healthy) {
-            println("Health change: unhealthy -> healthy");
+        print("Health changed to: ");
+        if (newHealthy) {
+            println("healthy");
         } else {
-            println("Health change: healthy -> unhealthy");
+            println("unhealthy");
         }
     }
-    if (newState.chargeEnabled != chargeEnabled) {
+    if (newChargeEnabled != chargeEnabled) {
         changes = true;
-        if (newState.chargeEnabled) {
-            println("Charging change: disabled -> enabled");
+        print("Charging changed to: ");
+        if (newChargeEnabled) {
+            println("enabled");
         } else {
-            println("Charging change: enabled -> disabled");
+            println("disabled");
         }
     }
-    if (newState.dischargeEnabled != dischargeEnabled) {
+    if (newDischargeEnabled != dischargeEnabled) {
         changes = true;
-        if (newState.dischargeEnabled) {
-            println("Discharging change: disabled -> enabled");
+        print("Discharging changed to: ");
+        if (newDischargeEnabled) {
+            println("enabled");
         } else {
-            println("Discharging change: enabled -> disabled");
+            println("disabled");
         }
     }
-    if (newState.balancingEnabled != balancingEnabled) {
+    if (newBalancingEnabled != balancingEnabled) {
         changes = true;
-        if (newState.balancingEnabled) {
-            println("Balancing change: disabled -> enabled");
+        print("Balancing changed to: ");
+        if (newBalancingEnabled) {
+            println("enabled");
         } else {
-            println("Balancing change: enabled -> disabled");
+            println("disabled");
         }
     }
+
+    // Write the new state.
+    healthy = newHealthy;
+    chargeEnabled = newChargeEnabled;
+    dischargeEnabled = newDischargeEnabled;
+    balancingEnabled = newBalancingEnabled;
+
+    // Write out the entire state if any changes were made.
     if (changes) {
         print("New state; Healthy: ");
-        print(newState.healthy);
+        print(healthy);
         print(", Balancing: ");
-        print(newState.balancingEnabled);
+        print(balancingEnabled);
         print(", Charging: ");
-        print(newState.chargeEnabled);
+        print(chargeEnabled);
         print(", Discharging: ");
-        println(newState.dischargeEnabled);
+        println(dischargeEnabled);
+    }
+
+    // Apply the protections.
+    if (balancingEnabled == false) {
+        balancer.stopCellBalancing();
+    }
+
+    if (chargeEnabled) {
+        charger.enable();
+        balancer.enableCharging();
+    } else {
+        charger.disable();
+        balancer.disableCharging();
+    }
+
+    if (dischargeEnabled) {
+        balancer.enableDischarging();
+    } else {
+        balancer.disableDischarging();
     }
 }
