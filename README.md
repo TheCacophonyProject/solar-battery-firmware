@@ -1,5 +1,39 @@
 # Notes
 
+## Testing
+
+Basic:
+
+- [x] Initial boot up from no cells, following instructions for putting together camera.
+- [x] Charge from range of voltages, 6V to 20V.
+- [x] Can charge from solar panel. Can use a solar panel under an incandescent light bulb for some sort of controlled method.
+
+Sleep Mode:
+
+- [x] Starting sleep mode with no power source.
+- [x] Starting low power mode while there is a poor power source. Use a 1K resistor in series with a 12V supply to mimic a poor power source
+- [x] Battery discharge rate with no power source in sleep mode.
+- [x] Battery discharge rate with poor power source in sleep mode.
+- [x] Waking up from sleep mode with a good power source.
+- [x] Cell balancing in sleep mode and normal mode.
+
+Faults and recovery:
+
+- [x] Disable power out with low cell voltage. Can test by attaching a high load to a battery pack that is at a low charge state
+- [x] Recover from low cell voltage.
+- [x] Disable charge with high cell voltage. Set `TEST_MAXIMUM_CELL_VOLTAGE` in `bq76920.h` to help test this. Should still be able to discharge but will not charge.
+- [x] Recover from high cell voltage.
+- [x] Disable with high and low temperature.
+- [x] Recover from high and low temperature.
+- [x] Hysteresis for low voltage cell recovery.
+
+TODO:
+
+- [ ] Disable with short circuit: Need to change sense resistor for this.
+- [ ] Recover from short circuit.
+- [ ] Disable with over current: Need to change sense resistor for this.
+- [ ] Recover from over current
+
 ## Set input source
 
 If we disable input source
@@ -76,7 +110,6 @@ Improvements can be made here for reducing the charge/discharge before we get to
 TODO: Figure out a method for testing each [BQ29700](https://www.ti.com/lit/ds/symlink/bq2971.pdf)
 This will probably require a bed of nails test fixture to be practical.
 
+## Recovery from battery vault/ protection mode
 
-## Recovery from battery vault/ protection mode.
-
-- Cell under voltage protection (BQ76920): Charging is still allowed 
+- Cell under voltage protection (BQ76920): Charging is still allowed

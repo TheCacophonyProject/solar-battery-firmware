@@ -27,7 +27,7 @@
 // Voltage where UV protection will trigger in mV
 #define CELL_UV_TARGET 3000
 // Voltage where UV protection will recover in mV
-#define CELL_UV_RECOVERY CELL_UV_TARGET + 300
+#define CELL_UV_RECOVERY CELL_UV_TARGET + 700
 
 #define BQ76920_SYS_STAT_OV (1 << 2)
 #define BQ76920_SYS_STAT_UV (1 << 3)
@@ -100,6 +100,7 @@ class BQ76920 {
     void shipMode();
     bool uvCellRecovered();
     void debugLogging();
+    bool properCellPopulation();
 
   private:
     uint16_t calculateADC(uint8_t msb, uint8_t lsb);

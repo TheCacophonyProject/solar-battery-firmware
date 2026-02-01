@@ -334,7 +334,7 @@ bool BQ76920::uvCellRecovered() {
 
 void BQ76920::debugLogging() {
     if (!getCellVoltages()) {
-        println("Error getting cell voltages!!!!");
+        println("Err cell V");
         return;
     }
 
@@ -347,8 +347,8 @@ void BQ76920::debugLogging() {
         if (cellShouldBePopulated(i)) {
             // println("===============");
             if (cellMilliVoltages[i] < 20) {
-                println("Cell should be populated!!!!");
-                // TODO
+                println("Extra cell?");
+                // TODO: What do we want to do here?
             }
 
             if (cellMilliVoltages[i] < minVoltage) {
@@ -360,15 +360,44 @@ void BQ76920::debugLogging() {
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell should not be populated!!!!");
+                println("Cell missing");
                 // TODO
             }
         }
     }
     // print("Max voltage: ");
     // println(maxVoltage);
-    print("Min voltage: ");
+    print("Min v: ");
     println(minVoltage);
+}
+
+// properCellPopulation will check the cells for the initial boot of the battery.
+// It will check:
+// 1. All cells that should be populated are populated.
+// 2. All cells that should not be populated are not populated.
+// 3. TODO: Check that the cells have a similar voltage.
+bool BQ76920::properCellPopulation() {
+    if (!getCellVoltages()) {
+        // println("Err getting cell V");
+        return false;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        println(cellMilliVoltages[i]);
+        if (cellShouldBePopulated(i)) {
+            // println("===============");
+            if (cellMilliVoltages[i] < 2300) {
+                println("Missing cell");
+                return false;
+            }
+        } else {
+            if (cellMilliVoltages[i] > 20) {
+                println("Extra cell");
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 void BQ76920::writeOVandUVTripVoltages() {
@@ -379,7 +408,7 @@ void BQ76920::writeOVandUVTripVoltages() {
     uint32_t targetRaw = (uint32_t(CELL_OV_TARGET) * 1000 - adcOffset * 1000) / adcGain;
     if (TEST_MAXIMUM_CELL_VOLTAGE) {
         println("TEST_MAXIMUM_CELL_VOLTAGE");
-        targetRaw = 0x2000; // This is the lowest possible value for the over voltage protection.
+        targetRaw = 0x2008; // This is the lowest possible value for the over voltage protection.
     }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x2000) {

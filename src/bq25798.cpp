@@ -319,66 +319,69 @@ BQ25798_TEMP BQ25798::getTemperatureStatus() {
 }
 
 void BQ25798::checkStatus() {
-    println("status check");
+
+    // println("status check");
+    //
+    // readReg(BQ25798_REG1B_CHARGER_STATUS_0, &statusRegisterData);
+    // print("REG1B_CHARGER_STATUS_0: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG1C_CHARGER_STATUS_1, &statusRegisterData);
+    // print("REG1B_CHARGER_STATUS_1: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG1D_CHARGER_STATUS_2, &statusRegisterData);
+    // print("REG1B_CHARGER_STATUS_2: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG1E_CHARGER_STATUS_3, &statusRegisterData);
+    // print("REG1B_CHARGER_STATUS_3: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG1F_CHARGER_STATUS_4, &statusRegisterData);
+    // print("REG1B_CHARGER_STATUS_4: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG20_FAULT_STATUS_0, &statusRegisterData);
+    // print("BQ25798_REG20_FAULT_STATUS_0: ");
+    // println(statusRegisterData, HEX);
+    // readReg(BQ25798_REG21_FAULT_STATUS_1, &statusRegisterData);
+    // print("BQ25798_REG21_FAULT_STATUS_1: ");
+    // println(statusRegisterData, HEX);
+
+    // return;
+
     uint8_t statusRegisterData;
-    readReg(BQ25798_REG1B_CHARGER_STATUS_0, &statusRegisterData);
-    print("REG1B_CHARGER_STATUS_0: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG1C_CHARGER_STATUS_1, &statusRegisterData);
-    print("REG1B_CHARGER_STATUS_1: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG1D_CHARGER_STATUS_2, &statusRegisterData);
-    print("REG1B_CHARGER_STATUS_2: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG1E_CHARGER_STATUS_3, &statusRegisterData);
-    print("REG1B_CHARGER_STATUS_3: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG1F_CHARGER_STATUS_4, &statusRegisterData);
-    print("REG1B_CHARGER_STATUS_4: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG20_FAULT_STATUS_0, &statusRegisterData);
-    print("BQ25798_REG20_FAULT_STATUS_0: ");
-    println(statusRegisterData, HEX);
-    readReg(BQ25798_REG21_FAULT_STATUS_1, &statusRegisterData);
-    print("BQ25798_REG21_FAULT_STATUS_1: ");
-    println(statusRegisterData, HEX);
-
-    return;
-
     readReg(BQ25798_REG1C_CHARGER_STATUS_1, &statusRegisterData);
 
     uint8_t newChargeStatus = (statusRegisterData >> 5) & 0x03;
     if (newChargeStatus != chargeStatus) {
         chargeStatus = newChargeStatus;
-    }
-    switch (chargeStatus) {
-    case 0x00:
-        println("Not charging");
-        break;
-    case 0x01:
-        println("Trickle charge");
-        break;
-    case 0x02:
-        println("Pre charge");
-        break;
-    case 0x03:
-        println("Fast charge (CC)");
-        break;
-    case 0x04:
-        println("Taper charge (CC)");
-        break;
-    case 0x05:
-        println("Reserved");
-        break;
-    case 0x06:
-        println("Top-off Timer Active Charging");
-        break;
-    case 0x07:
-        println("Charge Termination Done");
-        break;
-    default:
-        println("Unknown charge status");
-        break;
+        switch (chargeStatus) {
+        // case 0x00:
+        //     println("Not charging");
+        //     break;
+        // case 0x01:
+        //     println("Trickle charge");
+        //     break;
+        // case 0x02:
+        //     println("Pre charge");
+        //     break;
+        // case 0x03:
+        //     println("Fast charge (CC)");
+        //     break;
+        // case 0x04:
+        //     println("Taper charge (CC)");
+        //     break;
+        // case 0x05:
+        //     println("Reserved");
+        //     break;
+        // case 0x06:
+        //     println("Top-off Timer Active Charging");
+        //     break;
+        // case 0x07:
+        //     println("Charge Termination Done");
+        //     break;
+        default:
+            print("Charge State 0x: ");
+            println(chargeStatus, HEX);
+            break;
+        }
     }
 
     // VBus Status
@@ -389,37 +392,38 @@ void BQ25798::checkStatus() {
         case 0x00:
             println("No Input or BHOT or BCOLD in OTG mode");
             break;
-        case 0x01:
-            println("USB SDP (500mA)");
-            break;
-        case 0x02:
-            println("USB CDP (1.5A)");
-            break;
-        case 0x03:
-            println("USB DCP (3.25A)");
-            break;
-        case 0x04:
-            println("Adjustable High Voltage DCP (HVDCP) (1.5A)");
-            break;
+        // case 0x01:
+        //     println("USB SDP (500mA)");
+        //     break;
+        // case 0x02:
+        //     println("USB CDP (1.5A)");
+        //     break;
+        // case 0x03:
+        //     println("USB DCP (3.25A)");
+        //     break;
+        // case 0x04:
+        //     println("Adjustable High Voltage DCP (HVDCP) (1.5A)");
+        //     break;
         case 0x05:
             println("Unknown adaptor (3A)");
             break;
-        case 0x06:
-            println("Non-Standard Adapter (1A/2A/2.1A/2.4A)");
-            break;
-        case 0x07:
-            println("In OTG mode");
-            break;
+        // case 0x06:
+        //     println("Non-Standard Adapter (1A/2A/2.1A/2.4A)");
+        //     break;
+        // case 0x07:
+        //     println("In OTG mode");
+        //     break;
         case 0x08:
             println("Not qualified adaptor");
             break;
-        case 0x0B:
-            println("Device directly powered from VBUS");
-        case 0x0C:
-            println("Backup Mode");
-            break;
+        // case 0x0B:
+        //     println("Device directly powered from VBUS");
+        // case 0x0C:
+        //     println("Backup Mode");
+        //     break;
         default:
-            println("Unknown VBus status");
+            print("VBus 0x: ");
+            println(newVbusStatus, HEX);
             break;
         }
     }

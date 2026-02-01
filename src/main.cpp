@@ -43,6 +43,15 @@ void enableSleepMode() {
     sleepModeEnabled = true;
 }
 
+unsigned long lastBeep = millis();
+
+void waitUntilNextBeep() {
+    while (millis() - lastBeep < 500) {
+    }
+    lastBeep = millis();
+    wdt_reset();
+}
+
 void setup() {
     // Setup WDT
     wdt_reset();
@@ -61,7 +70,7 @@ void setup() {
 // Setup serial interface if enabled
 #if SERIAL_ENABLE
     Serial.begin(9600);
-    println("Starting...");
+    println("Starting");
 #endif
 
     // TODO: Detect boot reason.
@@ -75,63 +84,81 @@ void setup() {
 
     // Try to find the BQ25798 (MPPT charger)
     if (!charger.begin(PIN_CE)) {
-        println(F("Could not find the BQ25798"));
+        println(F("Could not find BQ25798"));
         restart();
     }
-    println(F("Charger BQ25798 found!"));
+    println(F("BQ25798 found"));
+    waitUntilNextBeep();
     buzzer_beep();
 
     // Try to find the BQ76920 (cell balancer)
     // The BQ76920 is powered from the battery pack voltage so we will wait until we can detect a battery pack before
     // trying to find the BQ76920.
-    println("Waiting to sense battery pack voltage");
+    // println("Waiting to sense battery pack voltage");
     // charger.enable(); // Do we need this to "wake" up fresh cells in the battery pack? The protection chips might
     // prevent them from connecting until there is some external power.
     while (1) {
         if (charger.vbatPresent()) {
-            println("Detected battery pack voltage");
+            // println("Detected battery pack voltage");
             break;
         }
         delay(100);
         wdt_reset();
     }
+    waitUntilNextBeep();
     buzzer_beep();
 
     // Try to find the BQ76920 (cell balancer)
     // If it is the first power up we might need to wake it up first.
-    println("Connecting to balancer.");
+    // println("Connecting to balancer.");
     if (!balancer.begin()) {
-        println("waking up balancer");
+        // println("waking up balancer");
         wakeUpBalancer();
         if (!balancer.begin()) {
-            println(F("Could not find the BQ76920"));
+            // println(F("Could not find the BQ76920"));
             restart();
         }
     }
-    println(F("Balancer BQ76920 found!"));
+    println(F("BQ76920 found"));
+    waitUntilNextBeep();
     buzzer_beep();
 
+    // Once we have found the BQ76920 we should turn off the charging so we can get a good read on what the cell
+    // voltages are on start up.
+
+    charger.disable();
+    delay(1000);
+
+    if (!balancer.properCellPopulation()) {
+        // println("Incorrect cell population");
+        waitUntilNextBeep();
+        restart();
+    }
+
     // Setup interrupts
-    println("Setting up interrupts and PIT");
+    // println("Setting up interrupts and PIT");
     attachInterrupt(digitalPinToInterrupt(PIN_ALERT), balancerInterrupt, RISING);
     attachInterrupt(digitalPinToInterrupt(PIN_INTERRUPT), chargerInterrupt, FALLING);
     setupPIT();
+    waitUntilNextBeep();
     buzzer_beep();
 
     // Play setup finished noise
-    buzzer_pin_init();
+    waitUntilNextBeep();
+    waitUntilNextBeep();
     start_up_buzz();
 
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
 }
 
+// waleUpBalancer will go through the routine for waking up the BQ76920 when it has first been powered on.
 void wakeUpBalancer() {
     pinMode(PIN_TS1, OUTPUT);
     digitalWrite(PIN_TS1, HIGH);
-    delay(300);
+    delay(100);
     pinMode(PIN_TS1, INPUT);
-    delay(300);
+    delay(100);
 }
 
 // Interrupt from the BQ25798 MPPT charger INT pin.
@@ -161,13 +188,13 @@ void loop() {
 
     // Log any interrupts
     if (chargerInterrupted) {
-        println("Charger interrupt");
+        println("Charger int");
         // The flags get cleared when they get read so we read them out and store them locally so we can use them later,
         // gets cleared at the end of the loop.
         charger.readFlags();
     }
     if (balancerInterrupted) {
-        println("Balancer interrupt");
+        println("Balancer int");
     }
 
     // Run the main logic depending on what mode the battery is in.
@@ -177,17 +204,21 @@ void loop() {
         mainMode();
     }
 
+    // Update to the balancing state every 3 seconds if balancing is allowed.
+    if (seconds - lastBalancerUpdateSeconds > 3) {
+        lastBalancerUpdateSeconds = seconds;
+        if (protectionState.isBalancingEnabled()) {
+            balancer.updateBalanceRoutine();
+        } else {
+            balancer.stopCellBalancing();
+        }
+    }
+
     // Clear interrupt flags.
-    // disable interrupts while we clear the flags.
-    noInterrupts();
-    if (chargerInterrupted) {
-        chargerInterrupted = false;
-    }
-    if (balancerInterrupted) {
-        balancerInterrupted = false;
-    }
-    // re-enable interrupts after we clear the flags.
-    interrupts();
+    noInterrupts(); // We need to disable interrupts while doing this to avoid race conditions.
+    chargerInterrupted = false;
+    balancerInterrupted = false;
+    interrupts(); // Re-enable interrupts after we clear the flags.
 
     // When the charger reads the flags they get reset. So we store them to a local variable so they can be used
     // throughout the loop. Here we clear them.
@@ -221,6 +252,9 @@ void sleepMode() {
     protectionState.update(false);
 
     if (seconds % 10 == 0) {
+        // Update the balancer routine every 10 seconds.
+        balancer.updateBalanceRoutine();
+
         // Every 10 seconds we alow it to interrupt the attiny if there is a new source. We don't want this always
         // active as when there is a poor source it will constantly be waking up the attiny using up the power in the
         // process.
@@ -228,11 +262,9 @@ void sleepMode() {
     }
 
     if (seconds % 10 == 0 || chargerInterrupted || balancerInterrupted) {
-        // ===== Checks to see if we need to wake up from sleep mode =====
-
         // Check if we have an input source.
         if (charger.haveInputSource()) {
-            println("Have input source, leaving sleep mode");
+            println("Have input source");
             wakeUpBalancer();
             sleepModeEnabled = false;
             return;
@@ -271,16 +303,6 @@ void mainMode() {
         charger.checkStatus();
     }
 
-    // Update to the balancing state.
-    if (seconds - lastBalancerUpdateSeconds > 3) {
-        lastBalancerUpdateSeconds = seconds;
-        if (protectionState.isBalancingEnabled()) {
-            balancer.updateBalanceRoutine();
-        } else {
-            balancer.stopCellBalancing();
-        }
-    }
-
     // === Check if we need to go into a sleep mode.
     if (charger.haveInputSource() && !charger.inHighInputImpedance()) {
         lastInputSourceTime = seconds;
@@ -309,8 +331,12 @@ void restart() {
     println("Restarting.");
     Serial.flush();
 #endif
-
-    delay(100);
+    waitUntilNextBeep();
+    buzzer_on(500);
+    delay(400);
+    buzzer_on(200);
+    delay(400);
+    buzzer_off();
 
     cli();
     _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
