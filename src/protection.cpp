@@ -91,6 +91,7 @@ void ProtectionState::update(bool runChargerChecks) {
     //      - Using the internal temperature sensors on the chips that have them.
 
     // Log the changes from the old state to the new state
+    newHealthy = newHealthy && newChargeEnabled && newDischargeEnabled && newBalancingEnabled;
     bool changes = false;
     if (newHealthy != healthy) {
         changes = true;

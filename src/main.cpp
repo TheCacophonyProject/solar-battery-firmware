@@ -265,7 +265,6 @@ void sleepMode() {
         // Check if we have an input source.
         if (charger.haveInputSource()) {
             println("Have input source");
-            wakeUpBalancer();
             sleepModeEnabled = false;
             return;
         } else {
