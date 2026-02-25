@@ -1,7 +1,7 @@
 #include "protection.h"
 #include "util.h"
 
-ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_) : charger(charger_), balancer(balancer_) {}
+ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, AHT20 &aht20_) : charger(charger_), balancer(balancer_), aht20(aht20_) {}
 
 bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
@@ -21,7 +21,7 @@ void ProtectionState::update(bool runChargerChecks) {
     // This has some hysteresis to prevent cells close to under voltage turning
     // back on too quickly.
     if (cellUnderVoltageProtection && balancer.uvCellRecovered()) {
-        println("UV cell recovered");
+        println("UV recov");
         cellUnderVoltageProtection = false;
     }
     if (cellUnderVoltageProtection) {
@@ -55,7 +55,7 @@ void ProtectionState::update(bool runChargerChecks) {
     // Checking BQ76920 external temperature sensor.
     float temp1 = balancer.readTemp();
     if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
-        print("BQ76920 temp out of range: ");
+        print("76920 T:");
         println(temp1);
         newChargeEnabled = false;
         newDischargeEnabled = false;
@@ -79,15 +79,23 @@ void ProtectionState::update(bool runChargerChecks) {
         // should implement that.
         BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
         if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
-            println("BQ25798 temp sensor out of range");
+            println("25798 T err");
             newChargeEnabled = false;
             newDischargeEnabled = false;
             newBalancingEnabled = false;
         }
     }
 
+    // Checking AHT20 humidity. High humidity risks condensation inside the pack.
+    if (aht20.humidity() >= HUMIDITY_MAX) {
+        print("Hum high:");
+        println(aht20.humidity());
+        newChargeEnabled = false;
+        newDischargeEnabled = false;
+        newBalancingEnabled = false;
+    }
+
     // TODO: Run more checks
-    //      - Using the I2C temp/humidity sensor.
     //      - Using the internal temperature sensors on the chips that have them.
 
     // Log the changes from the old state to the new state
@@ -95,38 +103,38 @@ void ProtectionState::update(bool runChargerChecks) {
     bool changes = false;
     if (newHealthy != healthy) {
         changes = true;
-        print("Health changed to: ");
+        print("Health:");
         if (newHealthy) {
-            println("healthy");
+            println("ok");
         } else {
-            println("unhealthy");
+            println("bad");
         }
     }
     if (newChargeEnabled != chargeEnabled) {
         changes = true;
-        print("Charging changed to: ");
+        print("Chg:");
         if (newChargeEnabled) {
-            println("enabled");
+            println("on");
         } else {
-            println("disabled");
+            println("off");
         }
     }
     if (newDischargeEnabled != dischargeEnabled) {
         changes = true;
-        print("Discharging changed to: ");
+        print("Dischg:");
         if (newDischargeEnabled) {
-            println("enabled");
+            println("on");
         } else {
-            println("disabled");
+            println("off");
         }
     }
     if (newBalancingEnabled != balancingEnabled) {
         changes = true;
-        print("Balancing changed to: ");
+        print("Bal:");
         if (newBalancingEnabled) {
-            println("enabled");
+            println("on");
         } else {
-            println("disabled");
+            println("off");
         }
     }
 
@@ -138,13 +146,13 @@ void ProtectionState::update(bool runChargerChecks) {
 
     // Write out the entire state if any changes were made.
     if (changes) {
-        print("New state; Healthy: ");
+        print("State H:");
         print(healthy);
-        print(", Balancing: ");
+        print(" B:");
         print(balancingEnabled);
-        print(", Charging: ");
+        print(" C:");
         print(chargeEnabled);
-        print(", Discharging: ");
+        print(" D:");
         println(dischargeEnabled);
     }
 

@@ -86,7 +86,7 @@ bool BQ76920::readReg(bq76920_reg_t reg, uint8_t *data) {
     uint8_t crcData[] = {0x11, readData[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != readCRC) {
-        println("Error with CRC in reading the register");
+        println("CRC err");
         return false;
     }
     *data = readData[0];
@@ -102,11 +102,7 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
     uint8_t crcData[] = {0x11, dataAndCRC[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != dataAndCRC[1]) {
-        println("Error with CRC for the first bit block");
-        println(calculatedCRC);
-        println(dataAndCRC[1]);
-        println(crcData[0]);
-        println(crcData[1]);
+        println("CRC[0] err");
         return false;
     }
     data[0] = dataAndCRC[0];
@@ -116,7 +112,7 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
         crcData[0] = dataAndCRC[i * 2];
         calculatedCRC = crc8_atm(crcData, 1);
         if (calculatedCRC != dataAndCRC[i * 2 + 1]) {
-            println("Error with CRC in reading the block");
+            println("CRC[n] err");
             return false;
         }
         data[i] = dataAndCRC[i * 2];
@@ -170,7 +166,7 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
     for (int i = 0; i < 5; i++) {
         if (cellShouldBePopulated(i)) {
             if (cellMilliVoltages[i] < 20) {
-                println("Cell should be populated!!!!");
+                println("Cell miss!");
                 // TODO: What do we do here?
             }
 
@@ -182,7 +178,7 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell should not be populated!!!!");
+                println("Cell extra!");
                 // TODO: What do we do here?
             }
         }
@@ -207,7 +203,7 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
 bool BQ76920::getCellVoltages() {
     uint8_t data[10];
     if (!readBlock(BQ76920_REG0C_VC1_HI, data, 10)) {
-        println("Error reading cell voltages");
+        println("Cell V err");
         return false;
     }
 
@@ -231,7 +227,7 @@ void BQ76920::stopCellBalancing() {
 
 void BQ76920::updateBalanceRoutine() {
     if (!getCellVoltages()) {
-        println("Error getting cell voltages!!!!");
+        println("Cell V err");
         return;
     }
 
@@ -244,7 +240,7 @@ void BQ76920::updateBalanceRoutine() {
         if (cellShouldBePopulated(i)) {
             // println("===============");
             if (cellMilliVoltages[i] < 20) {
-                println("Cell should be populated!!!!");
+                println("Cell miss!");
                 // TODO
             }
 
@@ -257,7 +253,7 @@ void BQ76920::updateBalanceRoutine() {
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell should not be populated!!!!");
+                println("Cell extra!");
                 // TODO
             }
         }
@@ -276,21 +272,21 @@ void BQ76920::updateBalanceRoutine() {
     if (newBalancing != balancing) {
         balancing = newBalancing;
         if (balancing) {
-            println("Cell balancing enabled");
+            println("Bal on");
         } else {
-            println("Cell balancing disabled");
+            println("Bal off");
         }
     }
 
     if (balancing) {
         if (change) {
-            print("Cell difference: ");
+            print("Diff:");
             println(maxVoltage - minVoltage);
-            print("Cell balance needed. Balancing cell ");
+            print("Bal cell ");
             print(maxVoltageCell);
-            print(" max cell voltage: ");
+            print(" max:");
             print(maxVoltage);
-            print(" min cell voltage: ");
+            print(" min:");
             println(minVoltage);
         }
         // Drain the max cell.
@@ -407,17 +403,17 @@ void BQ76920::writeOVandUVTripVoltages() {
     // Calculate the target raw value for over voltage.
     uint32_t targetRaw = (uint32_t(CELL_OV_TARGET) * 1000 - adcOffset * 1000) / adcGain;
     if (TEST_MAXIMUM_CELL_VOLTAGE) {
-        println("TEST_MAXIMUM_CELL_VOLTAGE");
+        println("TEST_MAX_CELL_V");
         targetRaw = 0x2008; // This is the lowest possible value for the over voltage protection.
     }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x2000) {
-        println("Target cell over voltage out of range!!!!");
-        print("Target raw value: ");
+        println("OV out of range");
+        print("Raw:");
         println(targetRaw);
-        print("Max value: ");
+        print("Max:");
         println((0x2FF8 * adcGain + adcOffset * 1000) / 1000);
-        print("Min value: ");
+        print("Min:");
         println((0x2008 * adcGain + adcOffset * 1000) / 1000);
     }
     // We only write the middle 8 bits of the 16 bits.
@@ -428,17 +424,17 @@ void BQ76920::writeOVandUVTripVoltages() {
     // Calculate the target raw value for under voltage.
     targetRaw = (uint32_t(CELL_UV_TARGET) * 1000 - adcOffset * 1000) / adcGain;
     if (TEST_MINIMUM_CELL_VOLTAGE) {
-        println("TEST_MINIMUM_CELL_VOLTAGE");
+        println("TEST_MIN_CELL_V");
         targetRaw = 0x1FFF; // This is the highest possible value for the under voltage protection.
     }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x1000) {
-        println("Target cell under voltage out of range!!!!");
-        print("Target raw value: ");
+        println("UV out of range");
+        print("Raw:");
         println(targetRaw);
-        print("Max value: ");
+        print("Max:");
         println((0x1FF8 * adcGain + adcOffset * 1000) / 1000);
-        print("Min value: ");
+        print("Min:");
         println((0x1008 * adcGain + adcOffset * 1000) / 1000);
     }
     // We only write the middle 8 bits of the 16 bits.
@@ -448,26 +444,26 @@ void BQ76920::writeOVandUVTripVoltages() {
 
     // Write to the OV and UV registers
     if (!writeBlock(BQ76920_REG09_OV_TRIP, writeData, 2)) {
-        println("Failed to write OV and UV trip voltages!!!!");
+        println("OV/UV wr err");
     }
 
     // Read back the OV and UV trip voltages as a way to check the write/math.
     uint8_t blockData[2];
     if (!readBlock(BQ76920_REG09_OV_TRIP, blockData, 2)) {
-        println("Failed to read OV and UV trip voltages!!!!");
+        println("OV/UV rd err");
         return;
     }
 
     // 0b10_blockData[0]_1000
     uint32_t ovRaw = uint32_t(1 << (4 + 8 + 1)) + (uint32_t(blockData[0]) << 4) + (1 << 3);
     cellOVMilliVoltage = (ovRaw * adcGain) / 1000 + adcOffset;
-    print("Actual OV trip voltage: ");
+    print("OV trip:");
     println(cellOVMilliVoltage);
 
     // uvRaw: 0b01_blockData[1]_0000
     uint32_t uvRaw = uint32_t(1 << (4 + 8)) + (uint32_t(blockData[1]) << 4);
     cellUVMilliVoltage = (uvRaw * adcGain) / 1000 + adcOffset;
-    print("Actual UV trip voltage: ");
+    print("UV trip:");
     println(cellUVMilliVoltage);
 }
 

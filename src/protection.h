@@ -1,6 +1,7 @@
 #ifndef PROTECTION_H
 #define PROTECTION_H
 
+#include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
 #include <Arduino.h>
@@ -25,9 +26,12 @@
 //    |-- No charging allowed. Too hot.
 //    V
 
+// Humidity threshold above which charging and discharging are disabled.
+#define HUMIDITY_MAX 80
+
 class ProtectionState {
   public:
-    ProtectionState(BQ25798 &charger, BQ76920 &balancer);
+    ProtectionState(BQ25798 &charger, BQ76920 &balancer, AHT20 &aht20);
     void update(bool runChargerChecks);
 
     bool isChargingEnabled();
@@ -45,5 +49,6 @@ class ProtectionState {
                          // (healthy), this will be set false.
     BQ25798 &charger;
     BQ76920 &balancer;
+    AHT20 &aht20;
 };
 #endif

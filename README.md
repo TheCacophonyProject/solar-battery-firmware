@@ -1,5 +1,11 @@
 # Notes
 
+## TODO
+
+- [ ] Better voltage recovery from low cell/pack voltage. Currently it will turn off and wait until the cells reach a set voltage but we could be a bit smarter about this having different recover voltage set points for charging/stable states.
+- [ ] Some way of knowing the version of the PCB. Newer firmware might not support all old versions of the PCB so we need to make sure we know what version of the PCB we are programming. Could have a similar setup to what we have on the thermal camera.
+- [ ] When first powered on we can try to figure out how much capacity the cells have and if they are balanced.
+
 ## Testing
 
 Basic:
@@ -33,6 +39,7 @@ TODO:
 - [ ] Recover from short circuit.
 - [ ] Disable with over current: Need to change sense resistor for this.
 - [ ] Recover from over current
+- [ ] Disable from high humidity. Do we want to require a full restart to recover from this error as it means water might have got in the battery case?
 
 ## Set input source
 

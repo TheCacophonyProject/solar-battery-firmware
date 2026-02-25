@@ -171,8 +171,7 @@ void buzzer_on(uint32_t freq_hz) {
     sei();
 
     if (!ok) {
-        println("Couldn’t fit TOP value (frequency too low/high for chosen "
-                "prescalers)");
+        println("Buzzer freq err");
         tcb1_stop();
     }
 }

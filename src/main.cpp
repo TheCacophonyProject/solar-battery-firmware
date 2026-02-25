@@ -5,6 +5,7 @@
 #include <avr/wdt.h>
 #include <main.h>
 
+#include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
 #include "protection.h"
@@ -14,7 +15,8 @@
 
 BQ25798 charger;
 BQ76920 balancer;
-ProtectionState protectionState = ProtectionState(charger, balancer);
+AHT20 tempHumidity;
+ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidity);
 
 #define PIN_LED PIN_PB5
 #define PIN_TS1 PIN_PA7       // BQ76920 TS1
@@ -26,6 +28,7 @@ uint32_t seconds = 0; // Don't need to worry about an overflow for this as it wi
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
 uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
+uint32_t lastTempHumiditySeconds = 0;
 bool sleepModeEnabled = false;
 uint32_t lastInputSourceTime = 0;
 volatile bool chargerInterrupted = false;
@@ -120,6 +123,15 @@ void setup() {
         }
     }
     println(F("BQ76920 found"));
+    waitUntilNextBeep();
+    buzzer_beep();
+
+    // Try to find the AHT20 (temperature and humidity sensor)
+    if (!tempHumidity.begin()) {
+        println(F("Could not find AHT20"));
+        restart();
+    }
+    println(F("AHT20 found"));
     waitUntilNextBeep();
     buzzer_beep();
 
@@ -264,7 +276,7 @@ void sleepMode() {
     if (seconds % 10 == 0 || chargerInterrupted || balancerInterrupted) {
         // Check if we have an input source.
         if (charger.haveInputSource()) {
-            println("Have input source");
+            println("Input src");
             sleepModeEnabled = false;
             return;
         } else {
@@ -290,6 +302,17 @@ void mainMode() {
     // Update the protection state, including the charger checks.
     protectionState.update(true);
 
+    // Take a temperature and humidity reading every 30 seconds.
+    if (seconds - lastTempHumiditySeconds > 30) {
+        lastTempHumiditySeconds = seconds;
+        if (tempHumidity.measure()) {
+            print("Temp: ");
+            println(tempHumidity.temperature());
+            print("Humidity: ");
+            println(tempHumidity.humidity());
+        }
+    }
+
     // Update to the charger state.
     if (seconds - lastChargerUpdateSeconds > 5) {
         lastChargerUpdateSeconds = seconds;
@@ -312,14 +335,14 @@ void mainMode() {
 
     // Enable sleep mode if we don't have an input source for 20 seconds.
     if (seconds > lastInputSourceTime + 20) {
-        println("No input for 20 seconds, going into sleep mode");
+        println("No input 20s, sleep");
         enableSleepMode();
     }
 
     // Enable sleep mode if we don't have a poor power source. Constant checking of a poor power source can slowly drain
     // the battery.
     if (charger.poorSourceFlag) {
-        println("Poor source, going into sleep mode");
+        println("Poor src, sleep");
         charger.disableVBUSWakeup();
         enableSleepMode();
     }

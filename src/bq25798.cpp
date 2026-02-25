@@ -20,7 +20,7 @@ bool BQ25798::begin(int enablePin) {
     uint8_t regData;
     readReg(BQ25798_REG48_PART_INFORMATION, &regData);
     if ((regData & 0x38) != 0x18) {
-        println("Failed to find BQ25798, wrong part number");
+        println("Bad part#");
         println(regData, HEX);
         return false;
     }
@@ -31,7 +31,7 @@ bool BQ25798::begin(int enablePin) {
     // configured at a different register.
     readReg(BQ25798_REG0A_RECHARGE_CONTROL, &regData);
     if ((regData & 0xC0) != 0x80) {
-        println("Wrong cell count for BQ25798");
+        println("Bad cell cnt");
         return false;
     }
 
@@ -40,7 +40,7 @@ bool BQ25798::begin(int enablePin) {
     // if it is not 750MHz then something is wrong.
     readReg(BQ25798_REG13_CHARGER_CONTROL_4, &regData);
     if ((regData & 0x20) != 0x20) {
-        println("Wrong PWM frequency for BQ25798");
+        println("Bad PWM freq");
         return false;
     }
 
@@ -96,7 +96,7 @@ void BQ25798::checkSourceAndMPPT() {
         // the host may set EN_HIZ = 0 to force an immediate retry of the poor
         // source qualification.
         setBit(BQ25798_REG0F_CHARGER_CONTROL_0, 2, false);
-        println("Disabling high impedance mode");
+        println("Dis HIZ");
     }
 
     // Check if MPPT is enabled.
@@ -104,18 +104,18 @@ void BQ25798::checkSourceAndMPPT() {
     readReg(BQ25798_REG15_MPPT_CONTROL, &mpptControl);
     if (!(mpptControl & BQ25798_EN_MPPT)) {
         // MPPT is disabled, enable it.
-        println("Enabling MPPT");
+        println("En MPPT");
         setBit(BQ25798_REG15_MPPT_CONTROL, 0, true);
     }
 }
 
 void BQ25798::disableVBUSWakeup() {
-    println("Disable VBUS wakeup");
+    println("Dis VBUS wkup");
     writeReg(BQ25798_REG28_CHARGER_MASK_0, 0x11);
 };
 
 void BQ25798::enableVBUSWakeup() {
-    println("Enable VBUS wakeup");
+    println("En VBUS wkup");
     writeReg(BQ25798_REG28_CHARGER_MASK_0, 0x00);
 };
 
@@ -132,14 +132,12 @@ bool BQ25798::vbatPresent() {
 }
 
 void BQ25798::init() {
-    println("Running initialization");
+    println("Init");
 
     // From 9.5.1.7: Reset registers to default values and reset timer by
     // writing 1 to bit 6 on BQ25798_REG09_TERMINATION_CONTROL
-    println("Resetting registers to initial values.");
+    println("Reset regs");
     setBit(BQ25798_REG09_TERMINATION_CONTROL, 6, true);
-
-    println("Writing to registers");
 
     // 9.5.1.1: Write to register BQ25798_REG00_MIN_SYS_VOLTAGE to set the
     // minimum system voltage. 0x00 REG00_Minimal_System_Voltage -- Need to
@@ -153,10 +151,10 @@ void BQ25798::init() {
     writeWord(BQ25798_REG01_CHARGE_VOLTAGE_LIMIT, uint16_t(1230), true);
 
     // 0x03 REG03_Charge_Current_Limit -- Need to program
-    // Writing charge current limit to 1000mA
+    // Writing charge current limit to 2000mA
     // TODO make this configurable and read this back to check that it was set
     // correctly as it can reject some values if out of range.
-    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(100), true);
+    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(200), true);
 
     // 0x05 REG05_Input_Voltage_Limit -- Need to program
     // Writing input voltage limit to 22V
@@ -378,7 +376,7 @@ void BQ25798::checkStatus() {
         //     println("Charge Termination Done");
         //     break;
         default:
-            print("Charge State 0x: ");
+            print("Chg:0x");
             println(chargeStatus, HEX);
             break;
         }
@@ -390,7 +388,7 @@ void BQ25798::checkStatus() {
         vbusStatus = newVbusStatus;
         switch (newVbusStatus) {
         case 0x00:
-            println("No Input or BHOT or BCOLD in OTG mode");
+            println("No input");
             break;
         // case 0x01:
         //     println("USB SDP (500mA)");
@@ -405,7 +403,7 @@ void BQ25798::checkStatus() {
         //     println("Adjustable High Voltage DCP (HVDCP) (1.5A)");
         //     break;
         case 0x05:
-            println("Unknown adaptor (3A)");
+            println("Unk adapter");
             break;
         // case 0x06:
         //     println("Non-Standard Adapter (1A/2A/2.1A/2.4A)");
@@ -414,7 +412,7 @@ void BQ25798::checkStatus() {
         //     println("In OTG mode");
         //     break;
         case 0x08:
-            println("Not qualified adaptor");
+            println("Bad adapter");
             break;
         // case 0x0B:
         //     println("Device directly powered from VBUS");
@@ -422,7 +420,7 @@ void BQ25798::checkStatus() {
         //     println("Backup Mode");
         //     break;
         default:
-            print("VBus 0x: ");
+            print("Vbus:0x");
             println(newVbusStatus, HEX);
             break;
         }
@@ -431,12 +429,12 @@ void BQ25798::checkStatus() {
     uint8_t faultRegVal;
     readReg(BQ25798_REG20_FAULT_STATUS_0, &faultRegVal);
     if (faultRegVal != 0x00) {
-        print("Fault register status_0 value: 0x");
+        print("Flt0:0x");
         println(faultRegVal, HEX);
     }
     readReg(BQ25798_REG21_FAULT_STATUS_1, &faultRegVal);
     if (faultRegVal != 0x00) {
-        print("Fault register status_1 value: 0x");
+        print("Flt1:0x");
         println(faultRegVal, HEX);
     }
 
@@ -466,79 +464,77 @@ void BQ25798::readFlags() {
 
     // ---------- REG22 ----------
     if (flags[0] & VBUS_PRESENT_FLAG) {
-        println("FLAG: VBUS present");
+        println("F:VBUS");
         vbusPresentFlag = true;
     }
-    // if (flags[0] & VAC1_PRESENT_FLAG)   println("FLAG: VAC1 present");
-    // if (flags[0] & VAC2_PRESENT_FLAG)   println("FLAG: VAC2 present");
     if (flags[0] & POWER_GOOD_FLAG)
-        println("FLAG: Power good");
+        println("F:PwrGd");
     if (flags[0] & POORSRC_FLAG) {
-        println("FLAG: Poor source detected");
+        println("F:PoorSrc");
         poorSourceFlag = true;
     }
     if (flags[0] & ADC_DONE_FLAG)
-        println("FLAG: ADC conversion done");
+        println("F:ADCdone");
 
     // ---------- REG23 ----------
     if (flags[1] & ICO_DONE_FLAG)
-        println("FLAG: ICO done");
+        println("F:ICOdone");
     if (flags[1] & ICO_FAIL_FLAG)
-        println("FLAG: ICO failed");
+        println("F:ICOfail");
     if (flags[1] & IINDPM_FLAG)
-        println("FLAG: Input current limited");
+        println("F:IINDPM");
     if (flags[1] & VINDPM_FLAG)
-        println("FLAG: Input voltage limited");
+        println("F:VINDPM");
     if (flags[1] & TREG_FLAG)
-        println("FLAG: Thermal regulation active");
+        println("F:TREG");
 
     // ---------- REG24 ----------
     if (flags[2] & CHARGE_DONE_FLAG)
-        println("FLAG: Charge done");
+        println("F:ChgDone");
     if (flags[2] & RECHARGE_FLAG)
-        println("FLAG: Re-charge");
+        println("F:Rechg");
     if (flags[2] & PRECHARGE_FLAG)
-        println("FLAG: Pre-charge");
+        println("F:Prechg");
     if (flags[2] & FASTCHARGE_FLAG)
-        println("FLAG: Fast charge");
+        println("F:FastChg");
     if (flags[2] & TOPOFF_FLAG)
-        println("FLAG: Top-off");
+        println("F:TopOff");
     if (flags[2] & TERMINATION_FLAG)
-        println("FLAG: Charge termination");
+        println("F:ChgTerm");
 
     // ---------- REG25 ----------
     if (flags[3] & TS_COLD_FLAG)
-        println("FLAG: TS cold");
+        println("F:TScold");
     if (flags[3] & TS_COOL_FLAG)
-        println("FLAG: TS cool");
+        println("F:TScool");
     if (flags[3] & TS_WARM_FLAG)
-        println("FLAG: TS warm");
+        println("F:TSwarm");
     if (flags[3] & TS_HOT_FLAG)
-        println("FLAG: TS hot");
+        println("F:TShot");
 
     // ---------- REG26 ----------
     if (flags[4] & VBUS_OVP_FLAG)
-        println("FAULT: VBUS over-voltage");
+        println("E:VBUS OVP");
     if (flags[4] & IBUS_OCP_FLAG)
-        println("FAULT: IBUS over-current");
+        println("E:IBUS OCP");
     if (flags[4] & IBAT_OCP_FLAG)
-        println("FAULT: IBAT over-current");
+        println("E:IBAT OCP");
     if (flags[4] & VSYS_OVP_FLAG)
-        println("FAULT: VSYS over-voltage");
+        println("E:VSYS OVP");
     if (flags[4] & VBAT_OVP_FLAG)
-        println("FAULT: VBAT over-voltage");
+        println("E:VBAT OVP");
     if (flags[4] & VBAT_UVP_FLAG)
-        println("FAULT: VBAT under-voltage");
+        println("E:VBAT UVP");
 
     // ---------- REG27 ----------
     if (flags[5] & TS_FAULT_FLAG)
-        println("FAULT: TS fault");
+        println("E:TS");
     if (flags[5] & TSHUT_FLAG)
-        println("FAULT: Thermal shutdown");
+        println("E:TShut");
     if (flags[5] & WATCHDOG_FLAG)
-        println("FAULT: Watchdog");
+        println("E:WDT");
     if (flags[5] & SAFETY_TIMER_FLAG)
-        println("FAULT: Safety timer expired");
+        println("E:SafeTimer");
 }
 
 void BQ25798::resetWatchdog() {
@@ -561,7 +557,7 @@ void BQ25798::sourceRetry() {
 bool BQ25798::writeWord(bq25798_reg_t reg, uint16_t data, bool check) {
     uint8_t out[] = {static_cast<uint8_t>(data >> 8), static_cast<uint8_t>(data & 0xFF)};
     if (!writeBlock(reg, out, 2)) {
-        println("Error writing word");
+        println("Write err");
         return false;
     }
     // Return true if we don't need to read back to check the write.
@@ -572,16 +568,16 @@ bool BQ25798::writeWord(bq25798_reg_t reg, uint16_t data, bool check) {
     uint16_t uint16_read;
 
     if (!readWord(reg, &uint16_read)) {
-        println("Error reading back word");
+        println("Read err");
         return false;
     }
 
     if (uint16_read != data) {
-        print("Error: When writing 0x");
+        print("Wr:0x");
         print(data, HEX);
-        print(" to 0x");
+        print("@0x");
         print(reg, HEX);
-        print(", read back 0x");
+        print(" rd:0x");
         println(uint16_read, HEX);
         return false;
     }
