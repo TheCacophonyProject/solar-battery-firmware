@@ -50,14 +50,20 @@ bool BQ25798::begin(int enablePin) {
     return true;
 }
 
-void BQ25798::enable() { digitalWrite(enablePin, LOW); }
+void BQ25798::enable() {
+    _sleeping = false;
+    digitalWrite(enablePin, LOW);
+}
 
 void BQ25798::disable() { digitalWrite(enablePin, HIGH); }
 
 void BQ25798::sleepMode() {
     // Enable a low power sleep mode by setting it to ship mode
+    _sleeping = true;
     writeReg(BQ25798_REG11_CHARGER_CONTROL_2, 0x44);
 }
+
+bool BQ25798::isSleeping() { return _sleeping; }
 
 bool BQ25798::haveInputSource() {
 

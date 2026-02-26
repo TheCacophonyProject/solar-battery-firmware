@@ -165,8 +165,10 @@ class BQ25798 {
     void enableVBUSWakeup();
     void resetWatchdog();
     bool vbatPresent();
+    bool isSleeping();
 
   private:
+    bool _sleeping = false;
     bool writeReg(bq25798_reg_t reg, uint8_t data);
     bool writeBlock(bq25798_reg_t reg, uint8_t data[], size_t len);
     bool readReg(bq25798_reg_t reg, uint8_t *data);

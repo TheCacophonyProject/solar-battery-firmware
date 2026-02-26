@@ -7,9 +7,9 @@ bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
 bool ProtectionState::isBalancingEnabled() { return balancingEnabled; }
 
-// update will run the checks and update the protection state for the battery pack. If the battery pack is not charging
-// it can be set to not run the checks for the charger (saving power consumption).
-void ProtectionState::update(bool runChargerChecks) {
+// update will run the checks and update the protection state for the battery pack. Charger checks are skipped when the
+// charger is in sleep mode.
+void ProtectionState::update() {
 
     // Set the new initial values as the default ones.
     bool newChargeEnabled = true;
@@ -54,16 +54,16 @@ void ProtectionState::update(bool runChargerChecks) {
 
     // Checking BQ76920 external temperature sensor.
     float temp1 = balancer.readTemp();
+    print("76920 T:");
+    println(temp1);
     if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
-        print("76920 T:");
-        println(temp1);
         newChargeEnabled = false;
         newDischargeEnabled = false;
         newBalancingEnabled = false;
     }
 
     // ===== Running the charger checks =======
-    if (runChargerChecks) {
+    if (!charger.isSleeping()) {
         // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from
         // FAULT_Status_0
         if (charger.vbatOvpStat()) {
@@ -87,9 +87,12 @@ void ProtectionState::update(bool runChargerChecks) {
     }
 
     // Checking AHT20 humidity. High humidity risks condensation inside the pack.
+    aht20.readResult();
+    print("AHT20 T:");
+    println(aht20.temperature());
+    print("Hum:");
+    println(aht20.humidity());
     if (aht20.humidity() >= HUMIDITY_MAX) {
-        print("Hum high:");
-        println(aht20.humidity());
         newChargeEnabled = false;
         newDischargeEnabled = false;
         newBalancingEnabled = false;

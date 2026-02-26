@@ -28,7 +28,7 @@ uint32_t seconds = 0; // Don't need to worry about an overflow for this as it wi
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
 uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
-uint32_t lastTempHumiditySeconds = 0;
+uint32_t lastProtectionUpdateSeconds = (uint32_t)0 - 6; // Fire on the first loop iteration.
 bool sleepModeEnabled = false;
 uint32_t lastInputSourceTime = 0;
 volatile bool chargerInterrupted = false;
@@ -132,6 +132,8 @@ void setup() {
         restart();
     }
     println(F("AHT20 found"));
+    // Trigger the first AHT20 measurement now so it completes during the remaining startup sequence.
+    tempHumidity.trigger();
     waitUntilNextBeep();
     buzzer_beep();
 
@@ -216,6 +218,12 @@ void loop() {
         mainMode();
     }
 
+    // Update the protection state every 5 seconds.
+    if (seconds - lastProtectionUpdateSeconds > 5) {
+        lastProtectionUpdateSeconds = seconds;
+        protectionState.update();
+    }
+
     // Update to the balancing state every 3 seconds if balancing is allowed.
     if (seconds - lastBalancerUpdateSeconds > 3) {
         lastBalancerUpdateSeconds = seconds;
@@ -241,6 +249,12 @@ void loop() {
     Serial.flush();
 #endif
 
+    // If the next loop will run a protection check, trigger the AHT20 now so the
+    // measurement completes during sleep and the result is fresh when we read it.
+    if (seconds - lastProtectionUpdateSeconds >= 5) {
+        tempHumidity.trigger();
+    }
+
     // FLush the Wire, this makes sure that the ATtiny goes into a proper sleep state.
     Wire.flush();
 
@@ -259,9 +273,6 @@ void sleepMode() {
         delay(1);
         ledOff();
     }
-
-    // Update the protection state, skipping the charger checks.
-    protectionState.update(false);
 
     if (seconds % 10 == 0) {
         // Update the balancer routine every 10 seconds.
@@ -298,20 +309,6 @@ void mainMode() {
     ledOn();
     delay(1);
     ledOff();
-
-    // Update the protection state, including the charger checks.
-    protectionState.update(true);
-
-    // Take a temperature and humidity reading every 30 seconds.
-    if (seconds - lastTempHumiditySeconds > 30) {
-        lastTempHumiditySeconds = seconds;
-        if (tempHumidity.measure()) {
-            print("Temp: ");
-            println(tempHumidity.temperature());
-            print("Humidity: ");
-            println(tempHumidity.humidity());
-        }
-    }
 
     // Update to the charger state.
     if (seconds - lastChargerUpdateSeconds > 5) {

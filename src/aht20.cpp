@@ -54,50 +54,52 @@ bool AHT20::begin() {
     return true;
 }
 
-// measure triggers a measurement, polls until complete, then parses the result.
-bool AHT20::measure() {
-    // Send trigger measurement command: 0xAC 0x33 0x00
+bool AHT20::trigger() {
     uint8_t triggerParams[] = {0x33, 0x00};
     if (!i2c_.write(AHT20_ADDR, AHT20_CMD_TRIGGER, triggerParams, 2)) {
         println("AHT20: trigger failed");
         return false;
     }
+    return true;
+}
 
-    // Datasheet says ≥80ms; poll busy bit, retry 3 times with 100ms delay.
+bool AHT20::readResult() {
     uint8_t buf[7];
-    bool ready = false;
-    for (uint8_t i = 0; i < 3; i++) {
-        delay(100);
-        if (!readData(buf)) {
-            return false;
-        }
-        if (!(buf[0] & AHT20_BUSY)) {
-            ready = true;
-            break;
-        }
-        println("AHT20: busy, retrying");
+    if (!readData(buf)) {
+        return false;
     }
-    if (!ready) {
-        println("AHT20: measurement timeout");
+    if (buf[0] & AHT20_BUSY) {
+        println("AHT20: busy");
         return false;
     }
 
-    // CRC check over bytes 0-5; byte 6 is the CRC. 0xFF means no CRC provided.
     uint8_t readCRC = buf[6];
     if (readCRC != 0xFF && readCRC != crc8(buf, 6)) {
         println("AHT20: CRC mismatch");
         return false;
     }
 
-    // Section 8: Signal Conversion
-    // Bytes: [0]=status [1]=Hum[19:12] [2]=Hum[11:4] [3]=Hum[3:0]|Temp[19:16] [4]=Temp[15:8] [5]=Temp[7:0]
     uint32_t rawHum  = ((uint32_t)buf[1] << 12) | ((uint32_t)buf[2] << 4) | (buf[3] >> 4);
     uint32_t rawTemp = ((uint32_t)(buf[3] & 0x0F) << 16) | ((uint32_t)buf[4] << 8) | buf[5];
-
-    // Section 8.1: RH[%] = (S_RH / 2^20) * 100
-    humidity_ = (float)rawHum / 1048576.0f * 100.0f;
-    // Section 8.2: T[°C] = (S_T / 2^20) * 200 - 50
+    humidity_    = (float)rawHum / 1048576.0f * 100.0f;
     temperature_ = (float)rawTemp / 1048576.0f * 200.0f - 50.0f;
-
     return true;
+}
+
+// measure triggers a measurement, polls until complete, then parses the result.
+bool AHT20::measure() {
+    if (!trigger()) {
+        return false;
+    }
+
+    // Datasheet says ≥80ms; poll busy bit, retry 3 times with 100ms delay.
+    for (uint8_t i = 0; i < 3; i++) {
+        delay(100);
+        if (readResult()) {
+            return true;
+        }
+    }
+
+    println("AHT20: measurement timeout");
+    return false;
 }

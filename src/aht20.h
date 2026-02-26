@@ -23,6 +23,14 @@ class AHT20 {
     // Returns true on success. Call temperature() and humidity() for results.
     bool measure();
 
+    // trigger sends the measurement command and returns immediately.
+    // Call readResult() after at least 80ms (e.g. after the ATtiny wakes from sleep).
+    bool trigger();
+
+    // readResult reads and parses a previously triggered measurement.
+    // Returns false if the sensor is still busy or a read error occurs.
+    bool readResult();
+
     float temperature() const { return temperature_; }
     float humidity() const { return humidity_; }
 

@@ -32,7 +32,7 @@
 class ProtectionState {
   public:
     ProtectionState(BQ25798 &charger, BQ76920 &balancer, AHT20 &aht20);
-    void update(bool runChargerChecks);
+    void update();
 
     bool isChargingEnabled();
     bool isBalancingEnabled();
