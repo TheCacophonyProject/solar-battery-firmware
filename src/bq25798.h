@@ -7,6 +7,22 @@
 
 #define BQ25798_DEFAULT_ADDR 0x6B
 
+// Configuration: adjust these for your hardware setup.
+// Charge voltage limit (unit: 10mV). 1230 = 12.30V
+#define BQ25798_CFG_CHARGE_VOLTAGE_10MV 1230
+// Charge current limit (unit: 10mA). 250 = 2500mA
+#define BQ25798_CFG_CHARGE_CURRENT_10MA 250
+// Input voltage limit (unit: 100mV). 220 = 22.0V
+#define BQ25798_CFG_INPUT_VOLTAGE_100MV 220
+// Input current limit (unit: 10mA). 250 = 2500mA
+#define BQ25798_CFG_INPUT_CURRENT_10MA 250
+// Minimal system voltage raw register value (unit: 250mV, offset 2500mV). 10 = 5V
+#define BQ25798_CFG_MIN_SYS_VOLTAGE 10
+
+// NTC thermistor voltage divider resistors (ohms)
+#define BQ25798_NTC_R1_OHMS 5000
+#define BQ25798_NTC_R2_OHMS 30000
+
 enum class BQ25798_TEMP { COLD = 0, COOL, GOOD, WARM, HOT };
 
 #define BQ25798_VBAT_OVP_STAT (1u << 5)

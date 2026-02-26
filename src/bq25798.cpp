@@ -139,34 +139,20 @@ void BQ25798::init() {
     println("Reset regs");
     setBit(BQ25798_REG09_TERMINATION_CONTROL, 6, true);
 
-    // 9.5.1.1: Write to register BQ25798_REG00_MIN_SYS_VOLTAGE to set the
-    // minimum system voltage. 0x00 REG00_Minimal_System_Voltage -- Need to
-    // program
-    writeReg(BQ25798_REG00_MIN_SYS_VOLTAGE, 10);
+    // 9.5.1.1: REG00_Minimal_System_Voltage -- See BQ25798_CFG_MIN_SYS_VOLTAGE in bq25798.h
+    writeReg(BQ25798_REG00_MIN_SYS_VOLTAGE, BQ25798_CFG_MIN_SYS_VOLTAGE);
 
-    // 0x01 REG01_Charge_Voltage_Limit -- Need to program
-    // Writing charge voltage limit to 12.3V
-    // TODO make this configurable and read this back to check that it was set
-    // correctly as it can reject some values if out of range.
-    writeWord(BQ25798_REG01_CHARGE_VOLTAGE_LIMIT, uint16_t(1230), true);
+    // 0x01 REG01_Charge_Voltage_Limit -- See BQ25798_CFG_CHARGE_VOLTAGE_10MV in bq25798.h
+    writeWord(BQ25798_REG01_CHARGE_VOLTAGE_LIMIT, uint16_t(BQ25798_CFG_CHARGE_VOLTAGE_10MV), true);
 
-    // 0x03 REG03_Charge_Current_Limit -- Need to program
-    // Writing charge current limit to 2000mA
-    // TODO make this configurable and read this back to check that it was set
-    // correctly as it can reject some values if out of range.
-    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(200), true);
+    // 0x03 REG03_Charge_Current_Limit -- See BQ25798_CFG_CHARGE_CURRENT_10MA in bq25798.h
+    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(BQ25798_CFG_CHARGE_CURRENT_10MA), true);
 
-    // 0x05 REG05_Input_Voltage_Limit -- Need to program
-    // Writing input voltage limit to 22V
-    // TODO make this configurable and read this back to check that it was set
-    // correctly as it can reject some values if out of range.
-    writeReg(BQ25798_REG05_INPUT_VOLTAGE_LIMIT, 220);
+    // 0x05 REG05_Input_Voltage_Limit -- See BQ25798_CFG_INPUT_VOLTAGE_100MV in bq25798.h
+    writeReg(BQ25798_REG05_INPUT_VOLTAGE_LIMIT, BQ25798_CFG_INPUT_VOLTAGE_100MV);
 
-    // 0x06 REG06_Input_Current_Limit -- Need to program
-    // Writing input current limit to 200mA
-    // TODO make this configurable and read this back to check that it was set
-    // correctly as it can reject some values if out of range.
-    writeWord(BQ25798_REG06_INPUT_CURRENT_LIMIT, uint16_t(200), true);
+    // 0x06 REG06_Input_Current_Limit -- See BQ25798_CFG_INPUT_CURRENT_10MA in bq25798.h
+    writeWord(BQ25798_REG06_INPUT_CURRENT_LIMIT, uint16_t(BQ25798_CFG_INPUT_CURRENT_10MA), true);
 
     // 0x08 REG08_Precharge_Control -- Leave as default
 
@@ -649,8 +635,8 @@ uint16_t BQ25798::readTSADC() {
     print("P: ");
     println(p);
 
-    float r1 = 5000;
-    float r2 = 30000;
+    float r1 = BQ25798_NTC_R1_OHMS;
+    float r2 = BQ25798_NTC_R2_OHMS;
 
     // Voltage divider diagram
     //
