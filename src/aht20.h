@@ -34,6 +34,10 @@ class AHT20 {
     float temperature() const { return temperature_; }
     float humidity() const { return humidity_; }
 
+    // Set by trigger(), cleared after the result is consumed. Used to detect
+    // cases where readResult() is called without a prior trigger.
+    bool newReadingTriggered = false;
+
   private:
     // readData writes AHT20_STATUS_REG then reads 7 bytes (status + 5 data + CRC).
     bool readData(uint8_t buf[7]);

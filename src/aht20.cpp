@@ -60,10 +60,16 @@ bool AHT20::trigger() {
         println("AHT20: trigger failed");
         return false;
     }
+    newReadingTriggered = true;
     return true;
 }
 
 bool AHT20::readResult() {
+    if (!newReadingTriggered) {
+        println("AHT20: no trigger");
+    }
+    newReadingTriggered = false;
+
     uint8_t buf[7];
     if (!readData(buf)) {
         return false;
