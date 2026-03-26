@@ -14,6 +14,7 @@ bool BQ76920::begin() {
     }
     getADCGainAndOffset();
     writeOVandUVTripVoltages();
+    writeProtectionRegisters();
     return true;
 }
 
@@ -465,6 +466,56 @@ void BQ76920::writeOVandUVTripVoltages() {
     cellUVMilliVoltage = (uvRaw * adcGain) / 1000 + adcOffset;
     print("UV trip:");
     println(cellUVMilliVoltage);
+}
+
+void BQ76920::writeProtectionRegisters() {
+    // PROTECT1: SCD threshold and delay, RSNS scaling
+    // Bit 7: RSNS, Bits 4-3: SCD_D, Bits 2-0: SCD_T
+    uint8_t protect1 = (PROTECT_RSNS << 7) | (PROTECT_SCD_DELAY << 3) | PROTECT_SCD_THRESHOLD;
+    if (!writeReg(BQ76920_REG06_PROTECT1, protect1)) {
+        println("PROT1 wr err");
+    }
+
+    // PROTECT2: OCD threshold and delay
+    // Bits 6-4: OCD_D, Bits 3-0: OCD_T
+    uint8_t protect2 = (PROTECT_OCD_DELAY << 4) | PROTECT_OCD_THRESHOLD;
+    if (!writeReg(BQ76920_REG07_PROTECT2, protect2)) {
+        println("PROT2 wr err");
+    }
+
+    // PROTECT3: UV and OV delays
+    // Bits 7-6: UV_D, Bits 5-4: OV_D
+    uint8_t protect3 = (PROTECT_UV_DELAY << 6) | (PROTECT_OV_DELAY << 4);
+    if (!writeReg(BQ76920_REG08_PROTECT3, protect3)) {
+        println("PROT3 wr err");
+    }
+}
+
+BQ76920_OCD_SCD_STATE BQ76920::getOCDSCDState() {
+    uint8_t sysStat;
+    readReg(BQ76920_REG00_SYS_STAT, &sysStat);
+    if (sysStat & BQ76920_SYS_STAT_SCD) {
+        return BQ76920_OCD_SCD_STATE::SHORT_CIRCUIT;
+    }
+    if (sysStat & BQ76920_SYS_STAT_OCD) {
+        return BQ76920_OCD_SCD_STATE::OVERCURRENT;
+    }
+    return BQ76920_OCD_SCD_STATE::HEALTHY;
+}
+
+// isLoadPresent checks the LOAD_PRESENT bit in SYS_CTRL1.
+// This is only valid when CHG_ON = 0 (charging disabled).
+bool BQ76920::isLoadPresent() {
+    uint8_t sysCtrl1;
+    readReg(BQ76920_REG04_SYS_CTRL1, &sysCtrl1);
+    return (sysCtrl1 & (1 << 7)) != 0;
+}
+
+// clearOCDSCDFault clears the OCD and SCD fault bits in SYS_STAT.
+// Call this only after verifying the fault condition has cleared (load removed).
+// The host must re-enable DSG after calling this.
+void BQ76920::clearOCDSCDFault() {
+    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_SCD | BQ76920_SYS_STAT_OCD);
 }
 
 void BQ76920::shipMode() {

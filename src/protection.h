@@ -39,6 +39,7 @@ class ProtectionState {
 
   private:
     bool cellUnderVoltageProtection = false;
+    bool ocdScdProtection = false;
     bool chargeEnabled = true; // If false then the charge MOSFET controlled by the BQ76920 should be disabled and the
                                // BQ25798 should disable charging.
     bool dischargeEnabled = true; // If false then the discharge MOSFET controlled by the BQ76920 should be disabled.

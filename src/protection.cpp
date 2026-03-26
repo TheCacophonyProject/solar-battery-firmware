@@ -1,7 +1,8 @@
 #include "protection.h"
 #include "util.h"
 
-ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, AHT20 &aht20_) : charger(charger_), balancer(balancer_), aht20(aht20_) {}
+ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, AHT20 &aht20_)
+    : charger(charger_), balancer(balancer_), aht20(aht20_) {}
 
 bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
@@ -29,6 +30,30 @@ void ProtectionState::update() {
         // We don't need to limit balancing here as balancing will have its own
         // limit on how low it can discharge the cell to. // TODO, add` this
         newBalancingEnabled = false;
+    }
+
+    // Check OCD/SCD hardware protection status and handle recovery.
+    // After an OCD/SCD fault, the BQ76920 hardware automatically disables DSG.
+    // Recovery requires: CHG disabled → load removed → clear fault → re-enable DSG.
+    BQ76920_OCD_SCD_STATE ocdScdState = balancer.getOCDSCDState();
+    if (ocdScdState != BQ76920_OCD_SCD_STATE::HEALTHY) {
+        if (ocdScdState == BQ76920_OCD_SCD_STATE::SHORT_CIRCUIT) {
+            println("Pack SCD");
+        } else {
+            println("Pack OCD");
+        }
+        ocdScdProtection = true;
+    }
+    if (ocdScdProtection) {
+        newDischargeEnabled = false;
+        newBalancingEnabled = false;
+        // Charging must be disabled for LOAD_PRESENT detection to be active.
+        newChargeEnabled = false;
+        if (!balancer.isLoadPresent()) {
+            balancer.clearOCDSCDFault();
+            ocdScdProtection = false;
+            println("OCD/SCD recov");
+        }
     }
 
     // Check the Over Voltage and Under Voltage state of the cells.

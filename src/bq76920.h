@@ -29,8 +29,36 @@
 // Voltage where UV protection will recover in mV
 #define CELL_UV_RECOVERY CELL_UV_TARGET + 700
 
+#define BQ76920_SYS_STAT_OCD (1 << 0)
+#define BQ76920_SYS_STAT_SCD (1 << 1)
 #define BQ76920_SYS_STAT_OV (1 << 2)
 #define BQ76920_SYS_STAT_UV (1 << 3)
+
+// ======== PROTECT1 - Short Circuit in Discharge (SCD) ======== //
+// Thresholds are voltage across the sense resistor (SRP-SRN).
+// Tune SCD_THRESHOLD and OCD_THRESHOLD based on sense resistor value:
+//   V_threshold = I_trip * R_sense
+// RSNS=0: lower range (22-100mV), RSNS=1: upper range (44-200mV)
+#define PROTECT_RSNS 0  // 0 = lower range, 1 = upper range (doubles all thresholds)
+
+// SCD delay: 0x0=70µs, 0x1=100µs, 0x2=200µs, 0x3=400µs
+#define PROTECT_SCD_DELAY 0x1  // 100µs
+// SCD threshold (RSNS=0): 0x0=22mV, 0x1=33mV, 0x2=44mV, 0x3=56mV,
+//                          0x4=67mV, 0x5=78mV, 0x6=89mV, 0x7=100mV
+#define PROTECT_SCD_THRESHOLD 0x5  // 78mV
+
+// OCD delay: 0x0=8ms, 0x1=20ms, 0x2=40ms, 0x3=80ms,
+//            0x4=160ms, 0x5=320ms, 0x6=640ms, 0x7=1280ms
+#define PROTECT_OCD_DELAY 0x2  // 40ms
+// OCD threshold (RSNS=0): 0x0=8mV, 0x1=11mV, 0x2=14mV, 0x3=17mV, 0x4=19mV,
+//                          0x5=22mV, 0x6=25mV, 0x7=28mV, 0x8=31mV, 0x9=33mV,
+//                          0xA=36mV, 0xB=39mV, 0xC=42mV, 0xD=44mV, 0xE=47mV, 0xF=50mV
+#define PROTECT_OCD_THRESHOLD 0x2  // 14mV → 1.4A with 10mΩ sense resistor
+
+// UV delay: 0x0=1s, 0x1=4s, 0x2=8s, 0x3=16s
+#define PROTECT_UV_DELAY 0x0  // 1s
+// OV delay: 0x0=1s, 0x1=2s, 0x2=4s, 0x3=8s
+#define PROTECT_OV_DELAY 0x0  // 1s
 
 typedef enum {
     // ---- Top-level status + control registers ----
@@ -85,6 +113,12 @@ enum class BQ76920_OV_UV_STATE {
     UNDER_VOLTAGE_AND_OVER_VOLTAGE,
 };
 
+enum class BQ76920_OCD_SCD_STATE {
+    HEALTHY,
+    OVERCURRENT,
+    SHORT_CIRCUIT,
+};
+
 class BQ76920 {
   public:
     bool begin();
@@ -101,6 +135,9 @@ class BQ76920 {
     bool uvCellRecovered();
     void debugLogging();
     bool properCellPopulation();
+    BQ76920_OCD_SCD_STATE getOCDSCDState();
+    bool isLoadPresent();
+    void clearOCDSCDFault();
 
   private:
     uint16_t calculateADC(uint8_t msb, uint8_t lsb);
@@ -114,6 +151,7 @@ class BQ76920 {
     void getADCGainAndOffset();
     bool setBit(bq76920_reg_t reg, uint8_t bit, bool value);
     void writeOVandUVTripVoltages();
+    void writeProtectionRegisters();
 
     I2C i2c_;
     uint8_t maxVoltageCell = 6;
