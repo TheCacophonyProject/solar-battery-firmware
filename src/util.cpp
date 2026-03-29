@@ -1,4 +1,5 @@
 #include "util.h"
+#include "log_codes.h"
 #include <avr/wdt.h>
 
 namespace {
@@ -171,7 +172,7 @@ void buzzer_on(uint32_t freq_hz) {
     sei();
 
     if (!ok) {
-        println("Buzzer freq err");
+        logCode(LOG_UTIL_BUZZER_ERR);
         tcb1_stop();
     }
 }

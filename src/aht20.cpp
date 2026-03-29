@@ -1,4 +1,5 @@
 #include "aht20.h"
+#include "log_codes.h"
 #include "util.h"
 
 // Datasheet: AHT20 Humidity and Temperature Sensor, ASAIR V1.0 May 2021
@@ -27,7 +28,7 @@ bool AHT20::begin() {
 
     uint8_t buf[7];
     if (!readData(buf)) {
-        println("AHT20: status read failed");
+        logCode(LOG_AHT_STATUS_FAIL);
         return false;
     }
 
@@ -38,17 +39,17 @@ bool AHT20::begin() {
     // Not calibrated: send 0xBE 0x08 0x00 to load calibration coefficients.
     uint8_t initParams[] = {0x08, 0x00};
     if (!i2c_.write(AHT20_ADDR, AHT20_CMD_INIT, initParams, 2)) {
-        println("AHT20: init command failed");
+        logCode(LOG_AHT_INIT_FAIL);
         return false;
     }
     delay(100);
 
     if (!readData(buf)) {
-        println("AHT20: status read after init failed");
+        logCode(LOG_AHT_STATUS_AFTER_INIT_FAIL);
         return false;
     }
     if ((buf[0] & AHT20_CALIBRATED) != AHT20_CALIBRATED) {
-        println("AHT20: not calibrated after init");
+        logCode(LOG_AHT_NOT_CALIBRATED);
         return false;
     }
     return true;
@@ -57,7 +58,7 @@ bool AHT20::begin() {
 bool AHT20::trigger() {
     uint8_t triggerParams[] = {0x33, 0x00};
     if (!i2c_.write(AHT20_ADDR, AHT20_CMD_TRIGGER, triggerParams, 2)) {
-        println("AHT20: trigger failed");
+        logCode(LOG_AHT_TRIGGER_FAIL);
         return false;
     }
     newReadingTriggered = true;
@@ -66,7 +67,7 @@ bool AHT20::trigger() {
 
 bool AHT20::readResult() {
     if (!newReadingTriggered) {
-        println("AHT20: no trigger");
+        logCode(LOG_AHT_NO_TRIGGER);
     }
     newReadingTriggered = false;
 
@@ -75,13 +76,13 @@ bool AHT20::readResult() {
         return false;
     }
     if (buf[0] & AHT20_BUSY) {
-        println("AHT20: busy");
+        logCode(LOG_AHT_BUSY);
         return false;
     }
 
     uint8_t readCRC = buf[6];
     if (readCRC != 0xFF && readCRC != crc8(buf, 6)) {
-        println("AHT20: CRC mismatch");
+        logCode(LOG_AHT_CRC_ERR);
         return false;
     }
 
@@ -106,6 +107,6 @@ bool AHT20::measure() {
         }
     }
 
-    println("AHT20: measurement timeout");
+    logCode(LOG_AHT_TIMEOUT);
     return false;
 }

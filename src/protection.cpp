@@ -1,4 +1,5 @@
 #include "protection.h"
+#include "log_codes.h"
 #include "util.h"
 
 ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, AHT20 &aht20_)
@@ -16,13 +17,12 @@ void ProtectionState::update() {
     bool newChargeEnabled = true;
     bool newDischargeEnabled = true;
     bool newBalancingEnabled = true;
-    bool newHealthy = true;
 
     // Check if we have recovered from a cell under voltage.
     // This has some hysteresis to prevent cells close to under voltage turning
     // back on too quickly.
     if (cellUnderVoltageProtection && balancer.uvCellRecovered()) {
-        println("UV recov");
+        logCode(LOG_PROT_UV_RECOVERED);
         cellUnderVoltageProtection = false;
     }
     if (cellUnderVoltageProtection) {
@@ -37,11 +37,7 @@ void ProtectionState::update() {
     // Recovery requires: CHG disabled → load removed → clear fault → re-enable DSG.
     BQ76920_OCD_SCD_STATE ocdScdState = balancer.getOCDSCDState();
     if (ocdScdState != BQ76920_OCD_SCD_STATE::HEALTHY) {
-        if (ocdScdState == BQ76920_OCD_SCD_STATE::SHORT_CIRCUIT) {
-            println("Pack SCD");
-        } else {
-            println("Pack OCD");
-        }
+        logCode(ocdScdState == BQ76920_OCD_SCD_STATE::SHORT_CIRCUIT ? LOG_PROT_SCD : LOG_PROT_OCD);
         ocdScdProtection = true;
     }
     if (ocdScdProtection) {
@@ -52,7 +48,7 @@ void ProtectionState::update() {
         if (!balancer.isLoadPresent()) {
             balancer.clearOCDSCDFault();
             ocdScdProtection = false;
-            println("OCD/SCD recov");
+            logCode(LOG_PROT_OCD_SCD_CLEAR);
         }
     }
 
@@ -60,18 +56,18 @@ void ProtectionState::update() {
     BQ76920_OV_UV_STATE ovuvState = balancer.getOVUVState();
     switch (ovuvState) {
     case BQ76920_OV_UV_STATE::OVER_VOLTAGE:
-        println("Cell OV");
+        logCode(LOG_PROT_CELL_OV);
         newChargeEnabled = false;
         break;
     case BQ76920_OV_UV_STATE::UNDER_VOLTAGE:
-        println("Cell UV");
+        logCode(LOG_PROT_CELL_UV);
         cellUnderVoltageProtection = true;
         newDischargeEnabled = false;
         break;
     case BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE:
         // Some cells are under voltage and some are over voltage. This would suggest something has done very wrong.
         // TODO: Decide what we want to do here, beep some sort of error tone?
-        println("Cell UV and OV");
+        logCode(LOG_PROT_CELL_UV_OV);
         newChargeEnabled = false;
         newDischargeEnabled = false;
         break;
@@ -79,8 +75,7 @@ void ProtectionState::update() {
 
     // Checking BQ76920 external temperature sensor.
     float temp1 = balancer.readTemp();
-    print("76920 T:");
-    println(temp1);
+    logCodeI16(LOG_PROT_BQ76920_TEMP, int16_t(temp1 * 10));
     if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
         newChargeEnabled = false;
         newDischargeEnabled = false;
@@ -92,7 +87,7 @@ void ProtectionState::update() {
         // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from
         // FAULT_Status_0
         if (charger.vbatOvpStat()) {
-            println("VBAT OVP");
+            logCode(LOG_PROT_VBAT_OVP);
             newChargeEnabled = false;
         }
 
@@ -104,7 +99,7 @@ void ProtectionState::update() {
         // should implement that.
         BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
         if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
-            println("25798 T err");
+            logCode(LOG_PROT_BQ25798_T_ERR);
             newChargeEnabled = false;
             newDischargeEnabled = false;
             newBalancingEnabled = false;
@@ -113,10 +108,7 @@ void ProtectionState::update() {
 
     // Checking AHT20 humidity. High humidity risks condensation inside the pack.
     aht20.readResult();
-    print("AHT20 T:");
-    println(aht20.temperature());
-    print("Hum:");
-    println(aht20.humidity());
+    logCodeI16U16(LOG_PROT_AHT20, int16_t(aht20.temperature() * 10), uint16_t(aht20.humidity() * 10));
     if (aht20.humidity() >= HUMIDITY_MAX) {
         newChargeEnabled = false;
         newDischargeEnabled = false;
@@ -126,44 +118,15 @@ void ProtectionState::update() {
     // TODO: Run more checks
     //      - Using the internal temperature sensors on the chips that have them.
 
-    // Log the changes from the old state to the new state
-    newHealthy = newHealthy && newChargeEnabled && newDischargeEnabled && newBalancingEnabled;
-    bool changes = false;
-    if (newHealthy != healthy) {
-        changes = true;
-        print("Health:");
-        if (newHealthy) {
-            println("ok");
-        } else {
-            println("bad");
-        }
-    }
-    if (newChargeEnabled != chargeEnabled) {
-        changes = true;
-        print("Chg:");
-        if (newChargeEnabled) {
-            println("on");
-        } else {
-            println("off");
-        }
-    }
-    if (newDischargeEnabled != dischargeEnabled) {
-        changes = true;
-        print("Dischg:");
-        if (newDischargeEnabled) {
-            println("on");
-        } else {
-            println("off");
-        }
-    }
-    if (newBalancingEnabled != balancingEnabled) {
-        changes = true;
-        print("Bal:");
-        if (newBalancingEnabled) {
-            println("on");
-        } else {
-            println("off");
-        }
+    // Check that we are in a healthy state (no protection were triggered).
+    bool newHealthy = newChargeEnabled && newDischargeEnabled && newBalancingEnabled;
+
+    // Log the new state if anything changed.
+    if (newHealthy != healthy || newChargeEnabled != chargeEnabled || newDischargeEnabled != dischargeEnabled ||
+        newBalancingEnabled != balancingEnabled) {
+        uint8_t flags = (newHealthy ? 0x01 : 0) | (newChargeEnabled ? 0x02 : 0) | (newDischargeEnabled ? 0x04 : 0) |
+                        (newBalancingEnabled ? 0x08 : 0);
+        logCodeU8(LOG_PROT_STATE, flags);
     }
 
     // Write the new state.
@@ -171,18 +134,6 @@ void ProtectionState::update() {
     chargeEnabled = newChargeEnabled;
     dischargeEnabled = newDischargeEnabled;
     balancingEnabled = newBalancingEnabled;
-
-    // Write out the entire state if any changes were made.
-    if (changes) {
-        print("State H:");
-        print(healthy);
-        print(" B:");
-        print(balancingEnabled);
-        print(" C:");
-        print(chargeEnabled);
-        print(" D:");
-        println(dischargeEnabled);
-    }
 
     // Apply the protections.
     if (balancingEnabled == false) {

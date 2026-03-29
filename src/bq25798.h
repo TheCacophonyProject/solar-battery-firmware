@@ -166,6 +166,7 @@ class BQ25798 {
     void resetWatchdog();
     bool vbatPresent();
     bool isSleeping();
+    float readTemp();
 
   private:
     bool _sleeping = false;
@@ -182,7 +183,6 @@ class BQ25798 {
     uint8_t vbusStatus;
     int enablePin;
     void readADC();
-    uint16_t readTSADC();
 };
 
 #endif

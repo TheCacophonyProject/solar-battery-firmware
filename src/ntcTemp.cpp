@@ -20,7 +20,6 @@ static const NtcPoint ntcTable[] = {
 
 // Convert resistance (ohms) to temperature (°C)
 float ntcTempFromResistance(uint32_t rOhms) {
-    // Serial.println(r_ohms);
     if (rOhms <= 0.0f) {
         return NAN;
     }

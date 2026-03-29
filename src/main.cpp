@@ -8,6 +8,7 @@
 #include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
+#include "log_codes.h"
 #include "protection.h"
 #include "util.h"
 
@@ -39,7 +40,7 @@ void enableSleepMode() {
     charger.sleepMode();
     // balancer.shipMode(); // Can't put the balancer in ship mode as that
     // disables the output.
-    println("sleep mode");
+    logCode(LOG_MAIN_SLEEP_MODE);
 #if SERIAL_ENABLE
     Serial.flush();
 #endif
@@ -70,10 +71,10 @@ void setup() {
     // Set pin initial states
     ledOff();
 
-// Setup serial interface if enabled
+    // Setup serial interface if enabled
 #if SERIAL_ENABLE
     Serial.begin(9600);
-    println("Starting");
+    logCode(LOG_MAIN_STARTING);
 #endif
 
     // TODO: Detect boot reason.
@@ -87,22 +88,18 @@ void setup() {
 
     // Try to find the BQ25798 (MPPT charger)
     if (!charger.begin(PIN_CE)) {
-        println(F("Could not find BQ25798"));
+        logCode(LOG_MAIN_BQ25798_NOT_FOUND);
         restart();
     }
-    println(F("BQ25798 found"));
+    logCode(LOG_MAIN_BQ25798_FOUND);
     waitUntilNextBeep();
     buzzer_beep();
 
     // Try to find the BQ76920 (cell balancer)
     // The BQ76920 is powered from the battery pack voltage so we will wait until we can detect a battery pack before
     // trying to find the BQ76920.
-    // println("Waiting to sense battery pack voltage");
-    // charger.enable(); // Do we need this to "wake" up fresh cells in the battery pack? The protection chips might
-    // prevent them from connecting until there is some external power.
     while (1) {
         if (charger.vbatPresent()) {
-            // println("Detected battery pack voltage");
             break;
         }
         delay(100);
@@ -113,25 +110,23 @@ void setup() {
 
     // Try to find the BQ76920 (cell balancer)
     // If it is the first power up we might need to wake it up first.
-    // println("Connecting to balancer.");
     if (!balancer.begin()) {
-        // println("waking up balancer");
         wakeUpBalancer();
         if (!balancer.begin()) {
-            // println(F("Could not find the BQ76920"));
+            logCode(LOG_MAIN_BQ76920_NOT_FOUND);
             restart();
         }
     }
-    println(F("BQ76920 found"));
+    logCode(LOG_MAIN_BQ76920_FOUND);
     waitUntilNextBeep();
     buzzer_beep();
 
     // Try to find the AHT20 (temperature and humidity sensor)
     if (!tempHumidity.begin()) {
-        println(F("Could not find AHT20"));
+        logCode(LOG_MAIN_AHT20_NOT_FOUND);
         restart();
     }
-    println(F("AHT20 found"));
+    logCode(LOG_MAIN_AHT20_FOUND);
     // Trigger the first AHT20 measurement now so it completes during the remaining startup sequence.
     tempHumidity.trigger();
     waitUntilNextBeep();
@@ -139,18 +134,42 @@ void setup() {
 
     // Once we have found the BQ76920 we should turn off the charging so we can get a good read on what the cell
     // voltages are on start up.
-
     charger.disable();
     delay(1000);
 
     if (!balancer.properCellPopulation()) {
-        // println("Incorrect cell population");
+        logCode(LOG_MAIN_CELL_POP_FAIL);
         waitUntilNextBeep();
         restart();
     }
 
+    // Check that temperature readings are sensible at startup.
+    // All sensors must read 15–35 °C and agree within 10 °C of each other.
+    if (!tempHumidity.readResult()) {
+        logCode(LOG_MAIN_AHT20_FAIL);
+        waitUntilNextBeep();
+        restart();
+    }
+    float ahtTemp = tempHumidity.temperature();
+    float balancerTemp = balancer.readTemp();
+    float chargerTemp = charger.readTemp();
+    logCode3I16(LOG_MAIN_TEMPS, int16_t(ahtTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
+    float tMin = min(ahtTemp, min(balancerTemp, chargerTemp));
+    float tMax = max(ahtTemp, max(balancerTemp, chargerTemp));
+    if (tMin < 15.0f || tMax > 35.0f) {
+        logCode(LOG_MAIN_TEMP_OOR);
+        waitUntilNextBeep();
+        restart();
+    }
+    if (tMax - tMin > 10.0f) {
+        logCode(LOG_MAIN_TEMP_MISMATCH);
+        waitUntilNextBeep();
+        restart();
+    }
+    waitUntilNextBeep();
+    buzzer_beep();
+
     // Setup interrupts
-    // println("Setting up interrupts and PIT");
     attachInterrupt(digitalPinToInterrupt(PIN_ALERT), balancerInterrupt, RISING);
     attachInterrupt(digitalPinToInterrupt(PIN_INTERRUPT), chargerInterrupt, FALLING);
     setupPIT();
@@ -202,13 +221,13 @@ void loop() {
 
     // Log any interrupts
     if (chargerInterrupted) {
-        println("Charger int");
+        logCode(LOG_MAIN_CHARGER_INT);
         // The flags get cleared when they get read so we read them out and store them locally so we can use them later,
         // gets cleared at the end of the loop.
         charger.readFlags();
     }
     if (balancerInterrupted) {
-        println("Balancer int");
+        logCode(LOG_MAIN_BALANCER_INT);
     }
 
     // Run the main logic depending on what mode the battery is in.
@@ -287,7 +306,7 @@ void sleepMode() {
     if (seconds % 10 == 0 || chargerInterrupted || balancerInterrupted) {
         // Check if we have an input source.
         if (charger.haveInputSource()) {
-            println("Input src");
+            logCode(LOG_MAIN_INPUT_SRC);
             sleepModeEnabled = false;
             return;
         } else {
@@ -332,14 +351,14 @@ void mainMode() {
 
     // Enable sleep mode if we don't have an input source for 20 seconds.
     if (seconds > lastInputSourceTime + 20) {
-        println("No input 20s, sleep");
+        logCode(LOG_MAIN_NO_INPUT_SLEEP);
         enableSleepMode();
     }
 
     // Enable sleep mode if we don't have a poor power source. Constant checking of a poor power source can slowly drain
     // the battery.
     if (charger.poorSourceFlag) {
-        println("Poor src, sleep");
+        logCode(LOG_MAIN_POOR_SRC_SLEEP);
         charger.disableVBUSWakeup();
         enableSleepMode();
     }
@@ -347,7 +366,7 @@ void mainMode() {
 
 void restart() {
 #if SERIAL_ENABLE
-    println("Restarting.");
+    logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
 #endif
     waitUntilNextBeep();

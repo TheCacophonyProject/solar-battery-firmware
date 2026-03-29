@@ -1,4 +1,5 @@
 #include "bq76920.h"
+#include "log_codes.h"
 #include "ntcTemp.h"
 #include "util.h"
 
@@ -26,12 +27,6 @@ void BQ76920::enableDischarging() { setBit(BQ76920_REG05_SYS_CTRL2, 1, true); }
 
 void BQ76920::disableDischarging() { setBit(BQ76920_REG05_SYS_CTRL2, 1, false); }
 
-// uint8_t BQ76920::getReg(bq76920_reg_t reg) {
-//     uint8_t data;
-//     readReg(reg, &data);
-//     return data;
-// }
-
 // Returns the temperature in °C
 // There is no automatic logic on the BQ76920 to react to temperatures that are too high
 // or low so we need to program stopping/reducing the charging/discharging current.
@@ -47,8 +42,7 @@ float BQ76920::readTemp() {
     uint32_t Resistance = (10000 * RTADC) / (3300 - RTADC);
     float temp = ntcTempFromResistance(Resistance);
     if (temp > 60.0 || temp < 5.0) {
-        print("Temperature out of range: ");
-        println(temp);
+        logCodeI16(LOG_BQ_TEMP_OOR, int16_t(temp * 10));
     }
     return temp;
 }
@@ -87,7 +81,7 @@ bool BQ76920::readReg(bq76920_reg_t reg, uint8_t *data) {
     uint8_t crcData[] = {0x11, readData[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != readCRC) {
-        println("CRC err");
+        logCode(LOG_BQ_CRC_ERR);
         return false;
     }
     *data = readData[0];
@@ -103,7 +97,7 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
     uint8_t crcData[] = {0x11, dataAndCRC[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != dataAndCRC[1]) {
-        println("CRC[0] err");
+        logCode(LOG_BQ_CRC0_ERR);
         return false;
     }
     data[0] = dataAndCRC[0];
@@ -113,7 +107,7 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
         crcData[0] = dataAndCRC[i * 2];
         calculatedCRC = crc8_atm(crcData, 1);
         if (calculatedCRC != dataAndCRC[i * 2 + 1]) {
-            println("CRC[n] err");
+            logCode(LOG_BQ_CRCN_ERR);
             return false;
         }
         data[i] = dataAndCRC[i * 2];
@@ -167,19 +161,21 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
     for (int i = 0; i < 5; i++) {
         if (cellShouldBePopulated(i)) {
             if (cellMilliVoltages[i] < 20) {
-                println("Cell miss!");
+                logCode(LOG_BQ_CELL_MISSING);
                 // TODO: What do we do here?
             }
 
             if (cellMilliVoltages[i] >= cellOVMilliVoltage) {
+                logCodeU16(LOG_BQ_CELL_MV, cellMilliVoltages[i]);
                 ov = true;
             }
             if (cellMilliVoltages[i] <= cellUVMilliVoltage) {
+                logCodeU16(LOG_BQ_CELL_MV, cellMilliVoltages[i]);
                 uv = true;
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell extra!");
+                logCode(LOG_BQ_CELL_EXTRA);
                 // TODO: What do we do here?
             }
         }
@@ -204,7 +200,7 @@ BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
 bool BQ76920::getCellVoltages() {
     uint8_t data[10];
     if (!readBlock(BQ76920_REG0C_VC1_HI, data, 10)) {
-        println("Cell V err");
+        logCode(LOG_BQ_CELL_V_ERR);
         return false;
     }
 
@@ -228,7 +224,7 @@ void BQ76920::stopCellBalancing() {
 
 void BQ76920::updateBalanceRoutine() {
     if (!getCellVoltages()) {
-        println("Cell V err");
+        logCode(LOG_BQ_CELL_V_ERR);
         return;
     }
 
@@ -239,9 +235,8 @@ void BQ76920::updateBalanceRoutine() {
     uint8_t newMaxVoltageCell = 0;
     for (int i = 0; i < 5; i++) {
         if (cellShouldBePopulated(i)) {
-            // println("===============");
             if (cellMilliVoltages[i] < 20) {
-                println("Cell miss!");
+                logCode(LOG_BQ_CELL_MISSING);
                 // TODO
             }
 
@@ -254,7 +249,7 @@ void BQ76920::updateBalanceRoutine() {
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell extra!");
+                logCode(LOG_BQ_CELL_EXTRA);
                 // TODO
             }
         }
@@ -272,23 +267,13 @@ void BQ76920::updateBalanceRoutine() {
 
     if (newBalancing != balancing) {
         balancing = newBalancing;
-        if (balancing) {
-            println("Bal on");
-        } else {
-            println("Bal off");
-        }
+        logCode(balancing ? LOG_BQ_BAL_ON : LOG_BQ_BAL_OFF);
     }
 
     if (balancing) {
         if (change) {
-            print("Diff:");
-            println(maxVoltage - minVoltage);
-            print("Bal cell ");
-            print(maxVoltageCell);
-            print(" max:");
-            print(maxVoltage);
-            print(" min:");
-            println(minVoltage);
+            logCodeU16(LOG_BQ_BAL_DIFF, maxVoltage - minVoltage);
+            logCodeU8U16U16(LOG_BQ_BAL_CELL, maxVoltageCell, maxVoltage, minVoltage);
         }
         // Drain the max cell.
         writeReg(BQ76920_REG01_CELL_BAL1, 0x01 << maxVoltageCell);
@@ -331,7 +316,7 @@ bool BQ76920::uvCellRecovered() {
 
 void BQ76920::debugLogging() {
     if (!getCellVoltages()) {
-        println("Err cell V");
+        logCode(LOG_BQ_CELL_V_ERR);
         return;
     }
 
@@ -342,9 +327,8 @@ void BQ76920::debugLogging() {
     uint8_t newMaxVoltageCell = 0;
     for (int i = 0; i < 5; i++) {
         if (cellShouldBePopulated(i)) {
-            // println("===============");
             if (cellMilliVoltages[i] < 20) {
-                println("Extra cell?");
+                logCode(LOG_BQ_CELL_EXTRA);
                 // TODO: What do we want to do here?
             }
 
@@ -357,15 +341,12 @@ void BQ76920::debugLogging() {
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Cell missing");
+                logCode(LOG_BQ_CELL_MISSING);
                 // TODO
             }
         }
     }
-    // print("Max voltage: ");
-    // println(maxVoltage);
-    print("Min v: ");
-    println(minVoltage);
+    logCodeU16(LOG_BQ_MIN_V, minVoltage);
 }
 
 // properCellPopulation will check the cells for the initial boot of the battery.
@@ -375,21 +356,19 @@ void BQ76920::debugLogging() {
 // 3. TODO: Check that the cells have a similar voltage.
 bool BQ76920::properCellPopulation() {
     if (!getCellVoltages()) {
-        // println("Err getting cell V");
         return false;
     }
 
     for (int i = 0; i < 5; i++) {
-        println(cellMilliVoltages[i]);
+        logCodeU16(LOG_BQ_CELL_MV, cellMilliVoltages[i]);
         if (cellShouldBePopulated(i)) {
-            // println("===============");
             if (cellMilliVoltages[i] < 2300) {
-                println("Missing cell");
+                logCode(LOG_BQ_CELL_MISSING);
                 return false;
             }
         } else {
             if (cellMilliVoltages[i] > 20) {
-                println("Extra cell");
+                logCode(LOG_BQ_CELL_EXTRA);
                 return false;
             }
         }
@@ -404,18 +383,12 @@ void BQ76920::writeOVandUVTripVoltages() {
     // Calculate the target raw value for over voltage.
     uint32_t targetRaw = (uint32_t(CELL_OV_TARGET) * 1000 - adcOffset * 1000) / adcGain;
     if (TEST_MAXIMUM_CELL_VOLTAGE) {
-        println("TEST_MAX_CELL_V");
+        logCode(LOG_BQ_TEST_MAX_V);
         targetRaw = 0x2008; // This is the lowest possible value for the over voltage protection.
     }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x2000) {
-        println("OV out of range");
-        print("Raw:");
-        println(targetRaw);
-        print("Max:");
-        println((0x2FF8 * adcGain + adcOffset * 1000) / 1000);
-        print("Min:");
-        println((0x2008 * adcGain + adcOffset * 1000) / 1000);
+        logCode(LOG_BQ_OV_OOR);
     }
     // We only write the middle 8 bits of the 16 bits.
     // The first and last 4 are staticly set.
@@ -425,18 +398,12 @@ void BQ76920::writeOVandUVTripVoltages() {
     // Calculate the target raw value for under voltage.
     targetRaw = (uint32_t(CELL_UV_TARGET) * 1000 - adcOffset * 1000) / adcGain;
     if (TEST_MINIMUM_CELL_VOLTAGE) {
-        println("TEST_MIN_CELL_V");
+        logCode(LOG_BQ_TEST_MIN_V);
         targetRaw = 0x1FFF; // This is the highest possible value for the under voltage protection.
     }
     // Check that the raw value is in range.
     if ((targetRaw & 0x3000) != 0x1000) {
-        println("UV out of range");
-        print("Raw:");
-        println(targetRaw);
-        print("Max:");
-        println((0x1FF8 * adcGain + adcOffset * 1000) / 1000);
-        print("Min:");
-        println((0x1008 * adcGain + adcOffset * 1000) / 1000);
+        logCode(LOG_BQ_UV_OOR);
     }
     // We only write the middle 8 bits of the 16 bits.
     // The first and last 4 are staticly set.
@@ -445,27 +412,25 @@ void BQ76920::writeOVandUVTripVoltages() {
 
     // Write to the OV and UV registers
     if (!writeBlock(BQ76920_REG09_OV_TRIP, writeData, 2)) {
-        println("OV/UV wr err");
+        logCode(LOG_BQ_OVUV_WR_ERR);
     }
 
     // Read back the OV and UV trip voltages as a way to check the write/math.
     uint8_t blockData[2];
     if (!readBlock(BQ76920_REG09_OV_TRIP, blockData, 2)) {
-        println("OV/UV rd err");
+        logCode(LOG_BQ_OVUV_RD_ERR);
         return;
     }
 
     // 0b10_blockData[0]_1000
     uint32_t ovRaw = uint32_t(1 << (4 + 8 + 1)) + (uint32_t(blockData[0]) << 4) + (1 << 3);
     cellOVMilliVoltage = (ovRaw * adcGain) / 1000 + adcOffset;
-    print("OV trip:");
-    println(cellOVMilliVoltage);
+    logCodeU16(LOG_BQ_OV_TRIP, cellOVMilliVoltage);
 
     // uvRaw: 0b01_blockData[1]_0000
     uint32_t uvRaw = uint32_t(1 << (4 + 8)) + (uint32_t(blockData[1]) << 4);
     cellUVMilliVoltage = (uvRaw * adcGain) / 1000 + adcOffset;
-    print("UV trip:");
-    println(cellUVMilliVoltage);
+    logCodeU16(LOG_BQ_UV_TRIP, cellUVMilliVoltage);
 }
 
 void BQ76920::writeProtectionRegisters() {
@@ -473,21 +438,21 @@ void BQ76920::writeProtectionRegisters() {
     // Bit 7: RSNS, Bits 4-3: SCD_D, Bits 2-0: SCD_T
     uint8_t protect1 = (PROTECT_RSNS << 7) | (PROTECT_SCD_DELAY << 3) | PROTECT_SCD_THRESHOLD;
     if (!writeReg(BQ76920_REG06_PROTECT1, protect1)) {
-        println("PROT1 wr err");
+        logCode(LOG_BQ_PROT1_ERR);
     }
 
     // PROTECT2: OCD threshold and delay
     // Bits 6-4: OCD_D, Bits 3-0: OCD_T
     uint8_t protect2 = (PROTECT_OCD_DELAY << 4) | PROTECT_OCD_THRESHOLD;
     if (!writeReg(BQ76920_REG07_PROTECT2, protect2)) {
-        println("PROT2 wr err");
+        logCode(LOG_BQ_PROT2_ERR);
     }
 
     // PROTECT3: UV and OV delays
     // Bits 7-6: UV_D, Bits 5-4: OV_D
     uint8_t protect3 = (PROTECT_UV_DELAY << 6) | (PROTECT_OV_DELAY << 4);
     if (!writeReg(BQ76920_REG08_PROTECT3, protect3)) {
-        println("PROT3 wr err");
+        logCode(LOG_BQ_PROT3_ERR);
     }
 }
 
@@ -514,9 +479,7 @@ bool BQ76920::isLoadPresent() {
 // clearOCDSCDFault clears the OCD and SCD fault bits in SYS_STAT.
 // Call this only after verifying the fault condition has cleared (load removed).
 // The host must re-enable DSG after calling this.
-void BQ76920::clearOCDSCDFault() {
-    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_SCD | BQ76920_SYS_STAT_OCD);
-}
+void BQ76920::clearOCDSCDFault() { writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_SCD | BQ76920_SYS_STAT_OCD); }
 
 void BQ76920::shipMode() {
     stopCellBalancing();
