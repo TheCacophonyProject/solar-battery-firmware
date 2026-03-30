@@ -19,9 +19,9 @@
 #define BQ76920_ADDRESS 0x08
 
 // Voltage difference between the highest and lowest cell where the balance routine will start(in mV)
-#define CELL_BALANCE_THRESHOLD_START 30
+#define CELL_BALANCE_THRESHOLD_START 60
 // Voltage difference between the highest and lowest cell where the balance routine will stop (in mV)
-#define CELL_BALANCE_THRESHOLD_END 20
+#define CELL_BALANCE_THRESHOLD_END 30
 // Voltage where OV protection will trigger in mV
 #define CELL_OV_TARGET 4200
 // Voltage where UV protection will trigger in mV
@@ -39,26 +39,26 @@
 // Tune SCD_THRESHOLD and OCD_THRESHOLD based on sense resistor value:
 //   V_threshold = I_trip * R_sense
 // RSNS=0: lower range (22-100mV), RSNS=1: upper range (44-200mV)
-#define PROTECT_RSNS 0  // 0 = lower range, 1 = upper range (doubles all thresholds)
+#define PROTECT_RSNS 0 // 0 = lower range, 1 = upper range (doubles all thresholds)
 
 // SCD delay: 0x0=70µs, 0x1=100µs, 0x2=200µs, 0x3=400µs
-#define PROTECT_SCD_DELAY 0x1  // 100µs
+#define PROTECT_SCD_DELAY 0x1 // 100µs
 // SCD threshold (RSNS=0): 0x0=22mV, 0x1=33mV, 0x2=44mV, 0x3=56mV,
 //                          0x4=67mV, 0x5=78mV, 0x6=89mV, 0x7=100mV
-#define PROTECT_SCD_THRESHOLD 0x5  // 78mV
+#define PROTECT_SCD_THRESHOLD 0x5 // 78mV
 
 // OCD delay: 0x0=8ms, 0x1=20ms, 0x2=40ms, 0x3=80ms,
 //            0x4=160ms, 0x5=320ms, 0x6=640ms, 0x7=1280ms
-#define PROTECT_OCD_DELAY 0x2  // 40ms
+#define PROTECT_OCD_DELAY 0x2 // 40ms
 // OCD threshold (RSNS=0): 0x0=8mV, 0x1=11mV, 0x2=14mV, 0x3=17mV, 0x4=19mV,
 //                          0x5=22mV, 0x6=25mV, 0x7=28mV, 0x8=31mV, 0x9=33mV,
 //                          0xA=36mV, 0xB=39mV, 0xC=42mV, 0xD=44mV, 0xE=47mV, 0xF=50mV
-#define PROTECT_OCD_THRESHOLD 0x2  // 14mV → 1.4A with 10mΩ sense resistor
+#define PROTECT_OCD_THRESHOLD 0x2 // 14mV → 1.4A with 10mΩ sense resistor
 
 // UV delay: 0x0=1s, 0x1=4s, 0x2=8s, 0x3=16s
-#define PROTECT_UV_DELAY 0x0  // 1s
+#define PROTECT_UV_DELAY 0x0 // 1s
 // OV delay: 0x0=1s, 0x1=2s, 0x2=4s, 0x3=8s
-#define PROTECT_OV_DELAY 0x0  // 1s
+#define PROTECT_OV_DELAY 0x0 // 1s
 
 typedef enum {
     // ---- Top-level status + control registers ----
@@ -135,6 +135,8 @@ class BQ76920 {
     bool uvCellRecovered();
     void debugLogging();
     bool properCellPopulation();
+    bool readCellMilliVoltages(uint16_t out[3]); // out: [cell1, cell2, cell3] in mV
+    bool readStatusRegs(uint8_t out[4]);         // out: SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
     BQ76920_OCD_SCD_STATE getOCDSCDState();
     bool isLoadPresent();
     void clearOCDSCDFault();

@@ -25,6 +25,14 @@
 
 enum class BQ25798_TEMP { COLD = 0, COOL, GOOD, WARM, HOT };
 
+struct BQ25798ADC {
+    float    tempC;
+    uint16_t vbus_mv;
+    uint16_t ibus_ma;
+    uint16_t vbat_mv;
+    int16_t  ibat_ma; // positive = charging, negative = discharging
+};
+
 #define BQ25798_VBAT_OVP_STAT (1u << 5)
 #define BQ25798_TS_COLD_STAT (1u << 3)
 #define BQ25798_TS_COOL_STAT (1u << 2)
@@ -167,6 +175,8 @@ class BQ25798 {
     bool vbatPresent();
     bool isSleeping();
     float readTemp();
+    void readADCAll(BQ25798ADC &out);
+    bool readStatusRegs(uint8_t out[5]); // REG1B..REG1F (STATUS_0..4)
 
   private:
     bool _sleeping = false;

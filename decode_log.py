@@ -84,6 +84,13 @@ CODES = {
     0x80: ("I2C failed to queue reg byte",     None,    []),
     0x81: ("I2C endTransmission error",        "<B",    ["err_code"]),
 
+    # Periodic status ── 0x90 (handled specially in run())
+    0x90: ("Status", "<IhhhBHHHHHHh5s4s",
+           ["seconds", "temp_aht_x10", "temp_bq76920_x10", "temp_bq25798_x10",
+            "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
+            "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma",
+            "chg_stat", "bq_stat"]),
+
     # BQ25798 ── 0x70–0x7F
     0x70: ("CHG bad part number",              "<B",    ["reg_data"]),
     0x71: ("CHG bad cell count",               None,    []),
@@ -133,6 +140,7 @@ LOG_BQ_CELL_MV = 0x47
 CELL_COUNT = 5
 
 LOG_CHG_FLAGS = 0x7C
+LOG_STATUS = 0x90
 
 # (reg_index, bit_mask): flag_name
 _CHG_FLAG_BITS = {
@@ -176,8 +184,13 @@ def fmt_payload(fields, values):
                          f"chg={'Y' if val & 0x02 else 'N'}  "
                          f"discharge={'Y' if val & 0x04 else 'N'}  "
                          f"bal={'Y' if val & 0x08 else 'N'}")
+        elif name == "seconds":
+            parts.append(f"t={val}s")
         elif name.endswith("_mv"):
             parts.append(f"{name}={val}mV")
+        elif name.endswith("_ma"):
+            label = name.replace("_ma", "")
+            parts.append(f"{label}={val}mA")
         elif name == "chg_status":
             parts.append(f"chg={CHG_CHARGE_STATUS.get(val, f'0x{val:02X}')}")
         elif name == "vbus_status":
@@ -231,6 +244,43 @@ def run(port, baud):
                              if values[ri] & mask]
                 flag_str = ("  " + " ".join(set_flags)) if set_flags else "  (none)"
                 print(f"[{ts}] CHG flags{flag_str}")
+                continue
+
+            # Special case: status snapshot — print on multiple lines
+            if code == LOG_STATUS:
+                cell_idx = 0
+                (secs, t_aht, t_bal, t_chg, hum,
+                 c1, c2, c3, vbus, ibus, vbat, ibat,
+                 chg_stat, bq_stat) = values
+                chg_a = ibat / 1000.0 if ibat > 0 else 0.0
+                dsg_a = abs(ibat) / 1000.0 if ibat < 0 else 0.0
+
+                # BQ25798 STATUS_0..4 (REG1B..1F)
+                s0, s1, s2, s3, s4 = chg_stat
+                chg_status_str = CHG_CHARGE_STATUS.get((s1 >> 5) & 0x07, f"0x{(s1>>5)&0x07:X}")
+                vbus_type_str  = CHG_VBUS_STATUS.get((s1 >> 1) & 0x0F, f"0x{(s1>>1)&0x0F:X}")
+
+                # BQ76920 SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
+                sys_stat, cellbal, ctrl1, ctrl2 = bq_stat
+                bq_flags = []
+                if sys_stat & 0x08: bq_flags.append("UV")
+                if sys_stat & 0x04: bq_flags.append("OV")
+                if sys_stat & 0x02: bq_flags.append("SCD")
+                if sys_stat & 0x01: bq_flags.append("OCD")
+                bal_cells = [i for i in range(5) if cellbal & (1 << i)]
+
+                print(f"[{ts}] STATUS  t={secs}s  "
+                      f"temp: aht={t_aht/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
+                      f"hum={hum}%")
+                print(f"         cells: {c1}mV {c2}mV {c3}mV  "
+                      f"vbus={vbus}mV({vbus_type_str}) ibus={ibus}mA  "
+                      f"vbat={vbat}mV chg={chg_a:.2f}A dsg={dsg_a:.2f}A  "
+                      f"chg_stat={chg_status_str}")
+                print(f"         bq25798: "
+                      f"s0=0x{s0:02X} s1=0x{s1:02X} s2=0x{s2:02X} s3=0x{s3:02X} s4=0x{s4:02X}  "
+                      f"bq76920: stat=0x{sys_stat:02X}({' '.join(bq_flags) or 'OK'}) "
+                      f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
+                      f"dsg={'Y' if ctrl2&0x02 else 'N'})")
                 continue
 
             # Special case: cell mV messages arrive in a run of CELL_COUNT

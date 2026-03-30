@@ -30,6 +30,7 @@ uint32_t seconds = 0; // Don't need to worry about an overflow for this as it wi
 uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
 uint32_t lastProtectionUpdateSeconds = (uint32_t)0 - 6; // Fire on the first loop iteration.
+uint32_t lastStatusLogSeconds = 0;
 bool sleepModeEnabled = false;
 uint32_t lastInputSourceTime = 0;
 volatile bool chargerInterrupted = false;
@@ -262,6 +263,47 @@ void loop() {
     // When the charger reads the flags they get reset. So we store them to a local variable so they can be used
     // throughout the loop. Here we clear them.
     charger.clearFlags();
+
+// Send periodic status snapshot every 10 seconds.
+#if SERIAL_ENABLE
+    if (seconds - lastStatusLogSeconds >= 10) {
+        lastStatusLogSeconds = seconds;
+
+        float bq76920Temp = balancer.readTemp();
+        uint16_t cellMv[3] = {0, 0, 0};
+        balancer.readCellMilliVoltages(cellMv);
+
+        BQ25798ADC chargerADC = {};
+        charger.readADCAll(chargerADC);
+
+        int16_t tempAht     = int16_t(tempHumidity.temperature() * 10);
+        int16_t tempBq76920 = int16_t(bq76920Temp * 10);
+        int16_t tempBq25798 = int16_t(chargerADC.tempC * 10);
+        uint8_t humPct      = uint8_t(tempHumidity.humidity());
+
+        uint8_t chgStat[5] = {};
+        charger.readStatusRegs(chgStat);
+
+        uint8_t bqStat[4] = {};
+        balancer.readStatusRegs(bqStat);
+
+        Serial.write(LOG_STATUS);
+        Serial.write((uint8_t *)&seconds,              4);
+        Serial.write((uint8_t *)&tempAht,              2);
+        Serial.write((uint8_t *)&tempBq76920,          2);
+        Serial.write((uint8_t *)&tempBq25798,          2);
+        Serial.write(humPct);
+        Serial.write((uint8_t *)&cellMv[0],            2);
+        Serial.write((uint8_t *)&cellMv[1],            2);
+        Serial.write((uint8_t *)&cellMv[2],            2);
+        Serial.write((uint8_t *)&chargerADC.vbus_mv,   2);
+        Serial.write((uint8_t *)&chargerADC.ibus_ma,   2);
+        Serial.write((uint8_t *)&chargerADC.vbat_mv,   2);
+        Serial.write((uint8_t *)&chargerADC.ibat_ma,   2);
+        Serial.write(chgStat,                          5); // REG1B..1F
+        Serial.write(bqStat,                           4); // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+    }
+#endif
 
 // Make sure we flush the serial buffer before going to sleep.
 #if SERIAL_ENABLE

@@ -492,6 +492,34 @@ float BQ25798::readTemp() {
     return ntcTempFromResistance(uint32_t(rt));
 }
 
+bool BQ25798::readStatusRegs(uint8_t out[5]) {
+    return readBlock(BQ25798_REG1B_CHARGER_STATUS_0, out, 5);
+}
+
+void BQ25798::readADCAll(BQ25798ADC &out) {
+    readADC(); // one-shot conversion; all channels enabled by default (REG2F/REG30 = 0x00)
+
+    uint16_t val;
+    readWord(BQ25798_REG31_IBUS_ADC, &val);
+    out.ibus_ma = val;
+
+    readWord(BQ25798_REG33_IBAT_ADC, &val);
+    out.ibat_ma = int16_t(val);
+
+    readWord(BQ25798_REG35_VBUS_ADC, &val);
+    out.vbus_mv = val;
+
+    readWord(BQ25798_REG3B_VBAT_ADC, &val);
+    out.vbat_mv = val;
+
+    readWord(BQ25798_REG3F_TS_ADC, &val);
+    float p = val * 0.000976563f;
+    float r1 = BQ25798_NTC_R1_OHMS;
+    float r2 = BQ25798_NTC_R2_OHMS;
+    float rt = (p * r1 * r2) / (r2 - p * (r1 + r2));
+    out.tempC = ntcTempFromResistance(uint32_t(rt));
+}
+
 bool BQ25798::inHighInputImpedance() {
     uint8_t chargeStatus;
     readReg(BQ25798_REG0F_CHARGER_CONTROL_0, &chargeStatus);

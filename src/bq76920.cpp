@@ -376,6 +376,20 @@ bool BQ76920::properCellPopulation() {
     return true;
 }
 
+bool BQ76920::readStatusRegs(uint8_t out[4]) {
+    if (!readBlock(BQ76920_REG00_SYS_STAT, out, 2)) return false;     // SYS_STAT, CELLBAL1
+    if (!readBlock(BQ76920_REG04_SYS_CTRL1, out + 2, 2)) return false; // SYS_CTRL1, SYS_CTRL2
+    return true;
+}
+
+bool BQ76920::readCellMilliVoltages(uint16_t out[3]) {
+    if (!getCellVoltages()) return false;
+    out[0] = cellMilliVoltages[0]; // VC1
+    out[1] = cellMilliVoltages[1]; // VC2
+    out[2] = cellMilliVoltages[4]; // VC5
+    return true;
+}
+
 void BQ76920::writeOVandUVTripVoltages() {
     // Holds the reg data for the UV and OV voltages.
     uint8_t writeData[2];

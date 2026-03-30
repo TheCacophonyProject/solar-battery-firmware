@@ -36,6 +36,12 @@ class ProtectionState {
 
     bool isChargingEnabled();
     bool isBalancingEnabled();
+    uint8_t getStateFlags() const {
+        return (healthy          ? 0x01 : 0)
+             | (chargeEnabled    ? 0x02 : 0)
+             | (dischargeEnabled ? 0x04 : 0)
+             | (balancingEnabled ? 0x08 : 0);
+    }
 
   private:
     bool cellUnderVoltageProtection = false;
