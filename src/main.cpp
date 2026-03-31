@@ -29,6 +29,7 @@ uint32_t seconds = 0; // Don't need to worry about an overflow for this as it wi
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
 uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
+uint32_t lastChargerWDTSeconds = 0;
 uint32_t lastProtectionUpdateSeconds = (uint32_t)0 - 6; // Fire on the first loop iteration.
 uint32_t lastStatusLogSeconds = 0;
 bool sleepModeEnabled = false;
@@ -276,10 +277,10 @@ void loop() {
         BQ25798ADC chargerADC = {};
         charger.readADCAll(chargerADC);
 
-        int16_t tempAht     = int16_t(tempHumidity.temperature() * 10);
+        int16_t tempAht = int16_t(tempHumidity.temperature() * 10);
         int16_t tempBq76920 = int16_t(bq76920Temp * 10);
         int16_t tempBq25798 = int16_t(chargerADC.tempC * 10);
-        uint8_t humPct      = uint8_t(tempHumidity.humidity());
+        uint8_t humPct = uint8_t(tempHumidity.humidity());
 
         uint8_t chgStat[5] = {};
         charger.readStatusRegs(chgStat);
@@ -288,20 +289,20 @@ void loop() {
         balancer.readStatusRegs(bqStat);
 
         Serial.write(LOG_STATUS);
-        Serial.write((uint8_t *)&seconds,              4);
-        Serial.write((uint8_t *)&tempAht,              2);
-        Serial.write((uint8_t *)&tempBq76920,          2);
-        Serial.write((uint8_t *)&tempBq25798,          2);
+        Serial.write((uint8_t *)&seconds, 4);
+        Serial.write((uint8_t *)&tempAht, 2);
+        Serial.write((uint8_t *)&tempBq76920, 2);
+        Serial.write((uint8_t *)&tempBq25798, 2);
         Serial.write(humPct);
-        Serial.write((uint8_t *)&cellMv[0],            2);
-        Serial.write((uint8_t *)&cellMv[1],            2);
-        Serial.write((uint8_t *)&cellMv[2],            2);
-        Serial.write((uint8_t *)&chargerADC.vbus_mv,   2);
-        Serial.write((uint8_t *)&chargerADC.ibus_ma,   2);
-        Serial.write((uint8_t *)&chargerADC.vbat_mv,   2);
-        Serial.write((uint8_t *)&chargerADC.ibat_ma,   2);
-        Serial.write(chgStat,                          5); // REG1B..1F
-        Serial.write(bqStat,                           4); // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+        Serial.write((uint8_t *)&cellMv[0], 2);
+        Serial.write((uint8_t *)&cellMv[1], 2);
+        Serial.write((uint8_t *)&cellMv[2], 2);
+        Serial.write((uint8_t *)&chargerADC.vbus_mv, 2);
+        Serial.write((uint8_t *)&chargerADC.ibus_ma, 2);
+        Serial.write((uint8_t *)&chargerADC.vbat_mv, 2);
+        Serial.write((uint8_t *)&chargerADC.ibat_ma, 2);
+        Serial.write(chgStat, 5); // REG1B..1F
+        Serial.write(bqStat, 4);  // SYS_STAT,CELLBAL1,CTRL1,CTRL2
     }
 #endif
 
@@ -349,6 +350,9 @@ void sleepMode() {
         // Check if we have an input source.
         if (charger.haveInputSource()) {
             logCode(LOG_MAIN_INPUT_SRC);
+            // Re-initialize the charger since waking from ship mode causes a
+            // power-on reset of the BQ25798, wiping all register configuration.
+            charger.init();
             sleepModeEnabled = false;
             return;
         } else {

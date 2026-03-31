@@ -192,7 +192,9 @@ void BQ25798::init() {
     writeReg(BQ25798_REG13_CHARGER_CONTROL_4, 0b11100000);
 
     // 0x14 REG14_Charger_Control_5 -- Need to program
-    writeReg(BQ25798_REG14_CHARGER_CONTROL_5, 0x16);
+    // 0x14 = 0001 0100: EN_EXTILIM=0 (ignore ILIM pin resistor, use IINDPM register only),
+    // EN_IINDPM=1 (internal IINDPM regulation enabled), IBAT_REG=01 (4A OTG discharge limit)
+    writeReg(BQ25798_REG14_CHARGER_CONTROL_5, 0x14);
 
     // 0x15 REG15_MPPT_Control -- Need to program
     writeReg(BQ25798_REG15_MPPT_CONTROL, 0xA8);
@@ -358,14 +360,6 @@ void BQ25798::readFlags() {
     logCodeBytes(LOG_CHG_FLAGS, flags, 6);
 }
 
-void BQ25798::resetWatchdog() {
-    // the host has to reset the watchdog timer by writing 1 to WD_RST bit
-    // before the watchdog timer expire
-    setBit(BQ25798_REG1B_CHARGER_STATUS_0, 5, true);
-    uint8_t data;
-    readReg(BQ25798_REG10_CHARGER_CONTROL_1, &data);
-}
-
 void BQ25798::sourceRetry() {
     // From 9.3.4.2 Poor Source Qualification:
     // the host may set EN_HIZ = 0 to force an immediate retry of the poor
@@ -492,9 +486,7 @@ float BQ25798::readTemp() {
     return ntcTempFromResistance(uint32_t(rt));
 }
 
-bool BQ25798::readStatusRegs(uint8_t out[5]) {
-    return readBlock(BQ25798_REG1B_CHARGER_STATUS_0, out, 5);
-}
+bool BQ25798::readStatusRegs(uint8_t out[5]) { return readBlock(BQ25798_REG1B_CHARGER_STATUS_0, out, 5); }
 
 void BQ25798::readADCAll(BQ25798ADC &out) {
     readADC(); // one-shot conversion; all channels enabled by default (REG2F/REG30 = 0x00)

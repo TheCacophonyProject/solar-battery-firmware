@@ -10,8 +10,8 @@
 // Configuration: adjust these for your hardware setup.
 // Charge voltage limit (unit: 10mV). 1230 = 12.30V
 #define BQ25798_CFG_CHARGE_VOLTAGE_10MV 1230
-// Charge current limit (unit: 10mA). 250 = 2500mA
-#define BQ25798_CFG_CHARGE_CURRENT_10MA 250
+// Charge current limit (unit: 10mA). 200 = 2000mA
+#define BQ25798_CFG_CHARGE_CURRENT_10MA 200
 // Input voltage limit (unit: 100mV). 220 = 22.0V
 #define BQ25798_CFG_INPUT_VOLTAGE_100MV 220
 // Input current limit (unit: 10mA). 250 = 2500mA
@@ -26,11 +26,11 @@
 enum class BQ25798_TEMP { COLD = 0, COOL, GOOD, WARM, HOT };
 
 struct BQ25798ADC {
-    float    tempC;
+    float tempC;
     uint16_t vbus_mv;
     uint16_t ibus_ma;
     uint16_t vbat_mv;
-    int16_t  ibat_ma; // positive = charging, negative = discharging
+    int16_t ibat_ma; // positive = charging, negative = discharging
 };
 
 #define BQ25798_VBAT_OVP_STAT (1u << 5)
@@ -171,7 +171,6 @@ class BQ25798 {
 
     void disableVBUSWakeup();
     void enableVBUSWakeup();
-    void resetWatchdog();
     bool vbatPresent();
     bool isSleeping();
     float readTemp();

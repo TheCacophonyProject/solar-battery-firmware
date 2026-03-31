@@ -1,0 +1,14 @@
+[Unit]
+Description=Battery manager serial log decoder
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/log/battery-logger
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /path/to/decode_log.py /dev/ttyAMA0 9600
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

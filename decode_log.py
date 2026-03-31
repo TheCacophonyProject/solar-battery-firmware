@@ -10,11 +10,14 @@ Usage:
 
     port  - serial device, default /dev/ttyAMA0
     baud  - baud rate,     default 9600
+    csv   - output CSV file, default battery_YYYYMMDD_HHMMSS.csv
 
 Install dependency:
     pip3 install pyserial
 """
 
+import csv
+import datetime
 import struct
 import sys
 import time
@@ -206,97 +209,128 @@ def fmt_payload(fields, values):
     return ("  " + "  ".join(parts)) if parts else ""
 
 
-def run(port, baud):
+CSV_HEADER = [
+    "wall_time", "seconds",
+    "temp_aht_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
+    "cell1_mv", "cell2_mv", "cell3_mv",
+    "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma",
+    "chg_a", "dsg_a", "chg_status", "vbus_type",
+    "s0_hex", "s1_hex", "s2_hex", "s3_hex", "s4_hex",
+    "sys_stat_hex", "cellbal_hex", "ctrl1_hex", "ctrl2_hex",
+    "bq_faults", "chg_on", "dsg_on",
+]
+
+
+def run(port, baud, csv_path=None):
+    if csv_path is None:
+        csv_path = datetime.datetime.now().strftime("battery_%Y%m%d_%H%M%S.csv")
     print(f"Opening {port} at {baud} baud …")
-    with serial.Serial(port, baud, timeout=2) as ser:
-        print("Listening. Press Ctrl-C to stop.\n")
-        cell_idx = 0
+    print(f"CSV output → {csv_path}\n")
+    with open(csv_path, "w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(CSV_HEADER)
+        with serial.Serial(port, baud, timeout=2) as ser:
+            print("Listening. Press Ctrl-C to stop.\n")
+            cell_idx = 0
 
-        while True:
-            raw = ser.read(1)
-            if not raw:
-                continue
+            while True:
+                raw = ser.read(1)
+                if not raw:
+                    continue
 
-            code = raw[0]
-            ts = time.strftime("%H:%M:%S")
+                code = raw[0]
+                ts = time.strftime("%H:%M:%S")
 
-            if code not in CODES:
-                print(f"[{ts}] 0x{code:02X}  (unknown)")
-                cell_idx = 0
-                continue
-
-            label, fmt, fields = CODES[code]
-
-            values = ()
-            if fmt is not None:
-                size = struct.calcsize(fmt)
-                payload = ser.read(size)
-                if len(payload) < size:
-                    print(f"[{ts}] 0x{code:02X}  short read (got {len(payload)}/{size} bytes)")
+                if code not in CODES:
+                    print(f"[{ts}] 0x{code:02X}  (unknown)")
                     cell_idx = 0
                     continue
-                values = struct.unpack(fmt, payload)
 
-            # Special case: CHG flags — decode each set bit by name
-            if code == LOG_CHG_FLAGS:
-                cell_idx = 0
-                set_flags = [name for (ri, mask), name in _CHG_FLAG_BITS.items()
-                             if values[ri] & mask]
-                flag_str = ("  " + " ".join(set_flags)) if set_flags else "  (none)"
-                print(f"[{ts}] CHG flags{flag_str}")
-                continue
+                label, fmt, fields = CODES[code]
 
-            # Special case: status snapshot — print on multiple lines
-            if code == LOG_STATUS:
-                cell_idx = 0
-                (secs, t_aht, t_bal, t_chg, hum,
-                 c1, c2, c3, vbus, ibus, vbat, ibat,
-                 chg_stat, bq_stat) = values
-                chg_a = ibat / 1000.0 if ibat > 0 else 0.0
-                dsg_a = abs(ibat) / 1000.0 if ibat < 0 else 0.0
+                values = ()
+                if fmt is not None:
+                    size = struct.calcsize(fmt)
+                    payload = ser.read(size)
+                    if len(payload) < size:
+                        print(f"[{ts}] 0x{code:02X}  short read (got {len(payload)}/{size} bytes)")
+                        cell_idx = 0
+                        continue
+                    values = struct.unpack(fmt, payload)
 
-                # BQ25798 STATUS_0..4 (REG1B..1F)
-                s0, s1, s2, s3, s4 = chg_stat
-                chg_status_str = CHG_CHARGE_STATUS.get((s1 >> 5) & 0x07, f"0x{(s1>>5)&0x07:X}")
-                vbus_type_str  = CHG_VBUS_STATUS.get((s1 >> 1) & 0x0F, f"0x{(s1>>1)&0x0F:X}")
+                # Special case: CHG flags — decode each set bit by name
+                if code == LOG_CHG_FLAGS:
+                    cell_idx = 0
+                    set_flags = [name for (ri, mask), name in _CHG_FLAG_BITS.items()
+                                 if values[ri] & mask]
+                    flag_str = ("  " + " ".join(set_flags)) if set_flags else "  (none)"
+                    print(f"[{ts}] CHG flags{flag_str}")
+                    continue
 
-                # BQ76920 SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
-                sys_stat, cellbal, ctrl1, ctrl2 = bq_stat
-                bq_flags = []
-                if sys_stat & 0x08: bq_flags.append("UV")
-                if sys_stat & 0x04: bq_flags.append("OV")
-                if sys_stat & 0x02: bq_flags.append("SCD")
-                if sys_stat & 0x01: bq_flags.append("OCD")
-                bal_cells = [i for i in range(5) if cellbal & (1 << i)]
+                # Special case: status snapshot — print on multiple lines
+                if code == LOG_STATUS:
+                    cell_idx = 0
+                    (secs, t_aht, t_bal, t_chg, hum,
+                     c1, c2, c3, vbus, ibus, vbat, ibat,
+                     chg_stat, bq_stat) = values
+                    chg_a = ibat / 1000.0 if ibat > 0 else 0.0
+                    dsg_a = abs(ibat) / 1000.0 if ibat < 0 else 0.0
 
-                print(f"[{ts}] STATUS  t={secs}s  "
-                      f"temp: aht={t_aht/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
-                      f"hum={hum}%")
-                print(f"         cells: {c1}mV {c2}mV {c3}mV  "
-                      f"vbus={vbus}mV({vbus_type_str}) ibus={ibus}mA  "
-                      f"vbat={vbat}mV chg={chg_a:.2f}A dsg={dsg_a:.2f}A  "
-                      f"chg_stat={chg_status_str}")
-                print(f"         bq25798: "
-                      f"s0=0x{s0:02X} s1=0x{s1:02X} s2=0x{s2:02X} s3=0x{s3:02X} s4=0x{s4:02X}  "
-                      f"bq76920: stat=0x{sys_stat:02X}({' '.join(bq_flags) or 'OK'}) "
-                      f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
-                      f"dsg={'Y' if ctrl2&0x02 else 'N'})")
-                continue
+                    # BQ25798 STATUS_0..4 (REG1B..1F)
+                    s0, s1, s2, s3, s4 = chg_stat
+                    chg_status_str = CHG_CHARGE_STATUS.get((s1 >> 5) & 0x07, f"0x{(s1>>5)&0x07:X}")
+                    vbus_type_str  = CHG_VBUS_STATUS.get((s1 >> 1) & 0x0F, f"0x{(s1>>1)&0x0F:X}")
 
-            # Special case: cell mV messages arrive in a run of CELL_COUNT
-            if code == LOG_BQ_CELL_MV:
-                print(f"[{ts}]   cell[{cell_idx}] = {values[0]} mV")
-                cell_idx = (cell_idx + 1) % CELL_COUNT
-            else:
-                cell_idx = 0
-                print(f"[{ts}] {label}{fmt_payload(fields, values)}")
+                    # BQ76920 SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
+                    sys_stat, cellbal, ctrl1, ctrl2 = bq_stat
+                    bq_flags = []
+                    if sys_stat & 0x08: bq_flags.append("UV")
+                    if sys_stat & 0x04: bq_flags.append("OV")
+                    if sys_stat & 0x02: bq_flags.append("SCD")
+                    if sys_stat & 0x01: bq_flags.append("OCD")
+                    bal_cells = [i for i in range(5) if cellbal & (1 << i)]
+
+                    print(f"[{ts}] STATUS  t={secs}s  "
+                          f"temp: aht={t_aht/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
+                          f"hum={hum}%")
+                    print(f"         cells: {c1}mV {c2}mV {c3}mV  "
+                          f"vbus={vbus}mV({vbus_type_str}) ibus={ibus}mA  "
+                          f"vbat={vbat}mV chg={chg_a:.2f}A dsg={dsg_a:.2f}A  "
+                          f"chg_stat={chg_status_str}")
+                    print(f"         bq25798: "
+                          f"s0=0x{s0:02X} s1=0x{s1:02X} s2=0x{s2:02X} s3=0x{s3:02X} s4=0x{s4:02X}  "
+                          f"bq76920: stat=0x{sys_stat:02X}({' '.join(bq_flags) or 'OK'}) "
+                          f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
+                          f"dsg={'Y' if ctrl2&0x02 else 'N'})")
+                    csv_writer.writerow([
+                        ts, secs,
+                        f"{t_aht/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
+                        c1, c2, c3,
+                        vbus, ibus, vbat, ibat,
+                        f"{chg_a:.3f}", f"{dsg_a:.3f}", chg_status_str, vbus_type_str,
+                        f"0x{s0:02X}", f"0x{s1:02X}", f"0x{s2:02X}", f"0x{s3:02X}", f"0x{s4:02X}",
+                        f"0x{sys_stat:02X}", f"0x{cellbal:02X}", f"0x{ctrl1:02X}", f"0x{ctrl2:02X}",
+                        " ".join(bq_flags) or "OK",
+                        "Y" if ctrl2 & 0x01 else "N", "Y" if ctrl2 & 0x02 else "N",
+                    ])
+                    csv_file.flush()
+                    continue
+
+                # Special case: cell mV messages arrive in a run of CELL_COUNT
+                if code == LOG_BQ_CELL_MV:
+                    print(f"[{ts}]   cell[{cell_idx}] = {values[0]} mV")
+                    cell_idx = (cell_idx + 1) % CELL_COUNT
+                else:
+                    cell_idx = 0
+                    print(f"[{ts}] {label}{fmt_payload(fields, values)}")
 
 
 if __name__ == "__main__":
-    _port = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
-    _baud = int(sys.argv[2]) if len(sys.argv) > 2 else 9600
+    _port     = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
+    _baud     = int(sys.argv[2]) if len(sys.argv) > 2 else 9600
+    _csv_path = sys.argv[3] if len(sys.argv) > 3 else None
     try:
-        run(_port, _baud)
+        run(_port, _baud, _csv_path)
     except KeyboardInterrupt:
         print("\nStopped.")
     except serial.SerialException as e:
