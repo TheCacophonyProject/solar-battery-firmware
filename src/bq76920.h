@@ -18,6 +18,9 @@
 
 #define BQ76920_ADDRESS 0x08
 
+// Sense resistor value in milliohms (used for coulomb counter current calculation)
+#define BQ76920_SENSE_RESISTOR_MOHM 5
+
 // Voltage difference between the highest and lowest cell where the balance routine will start(in mV)
 #define CELL_BALANCE_THRESHOLD_START 60
 // Voltage difference between the highest and lowest cell where the balance routine will stop (in mV)
@@ -33,6 +36,7 @@
 #define BQ76920_SYS_STAT_SCD (1 << 1)
 #define BQ76920_SYS_STAT_OV (1 << 2)
 #define BQ76920_SYS_STAT_UV (1 << 3)
+#define BQ76920_SYS_STAT_CC_READY (1 << 7)
 
 // ======== PROTECT1 - Short Circuit in Discharge (SCD) ======== //
 // Thresholds are voltage across the sense resistor (SRP-SRN).
@@ -137,6 +141,8 @@ class BQ76920 {
     bool properCellPopulation();
     bool readCellMilliVoltages(uint16_t out[3]); // out: [cell1, cell2, cell3] in mV
     bool readStatusRegs(uint8_t out[4]);         // out: SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
+    void triggerCC();                            // trigger a one-shot CC measurement
+    int16_t readCurrentMA();                     // read and clear CC result; positive = charging, negative = discharging
     BQ76920_OCD_SCD_STATE getOCDSCDState();
     bool isLoadPresent();
     void clearOCDSCDFault();

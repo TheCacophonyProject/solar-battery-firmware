@@ -11,7 +11,9 @@ fi
 
 pio run
 scp .pio/build/ATtiny1616/firmware.hex $device:
+scp decode_log.py $device:
 ssh $device "sudo pymcuprog -d attiny1616 -t uart -u /dev/serial0 erase"
+ssh $device "sudo systemctl restart battery-logger"
 ssh $device "sudo pymcuprog -d attiny1616 -t uart -u /dev/serial0 write -f firmware.hex"
 
 echo "Installed on device."

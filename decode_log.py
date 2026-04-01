@@ -88,10 +88,10 @@ CODES = {
     0x81: ("I2C endTransmission error",        "<B",    ["err_code"]),
 
     # Periodic status ── 0x90 (handled specially in run())
-    0x90: ("Status", "<IhhhBHHHHHHh5s4s",
+    0x90: ("Status", "<IhhhBHHHHHHhh5s4s",
            ["seconds", "temp_aht_x10", "temp_bq76920_x10", "temp_bq25798_x10",
             "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
-            "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma",
+            "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
             "chg_stat", "bq_stat"]),
 
     # BQ25798 ── 0x70–0x7F
@@ -213,7 +213,7 @@ CSV_HEADER = [
     "wall_time", "seconds",
     "temp_aht_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
     "cell1_mv", "cell2_mv", "cell3_mv",
-    "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma",
+    "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
     "chg_a", "dsg_a", "chg_status", "vbus_type",
     "s0_hex", "s1_hex", "s2_hex", "s3_hex", "s4_hex",
     "sys_stat_hex", "cellbal_hex", "ctrl1_hex", "ctrl2_hex",
@@ -271,7 +271,7 @@ def run(port, baud, csv_path=None):
                 if code == LOG_STATUS:
                     cell_idx = 0
                     (secs, t_aht, t_bal, t_chg, hum,
-                     c1, c2, c3, vbus, ibus, vbat, ibat,
+                     c1, c2, c3, vbus, ibus, vbat, ibat, ibat_cc,
                      chg_stat, bq_stat) = values
                     chg_a = ibat / 1000.0 if ibat > 0 else 0.0
                     dsg_a = abs(ibat) / 1000.0 if ibat < 0 else 0.0
@@ -296,7 +296,7 @@ def run(port, baud, csv_path=None):
                     print(f"         cells: {c1}mV {c2}mV {c3}mV  "
                           f"vbus={vbus}mV({vbus_type_str}) ibus={ibus}mA  "
                           f"vbat={vbat}mV chg={chg_a:.2f}A dsg={dsg_a:.2f}A  "
-                          f"chg_stat={chg_status_str}")
+                          f"bat_cc={ibat_cc/1000:.2f}A  chg_stat={chg_status_str}")
                     print(f"         bq25798: "
                           f"s0=0x{s0:02X} s1=0x{s1:02X} s2=0x{s2:02X} s3=0x{s3:02X} s4=0x{s4:02X}  "
                           f"bq76920: stat=0x{sys_stat:02X}({' '.join(bq_flags) or 'OK'}) "
@@ -306,7 +306,7 @@ def run(port, baud, csv_path=None):
                         ts, secs,
                         f"{t_aht/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
                         c1, c2, c3,
-                        vbus, ibus, vbat, ibat,
+                        vbus, ibus, vbat, ibat, ibat_cc,
                         f"{chg_a:.3f}", f"{dsg_a:.3f}", chg_status_str, vbus_type_str,
                         f"0x{s0:02X}", f"0x{s1:02X}", f"0x{s2:02X}", f"0x{s3:02X}", f"0x{s4:02X}",
                         f"0x{sys_stat:02X}", f"0x{cellbal:02X}", f"0x{ctrl1:02X}", f"0x{ctrl2:02X}",

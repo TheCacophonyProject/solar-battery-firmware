@@ -376,14 +376,38 @@ bool BQ76920::properCellPopulation() {
     return true;
 }
 
+void BQ76920::triggerCC() {
+    setBit(BQ76920_REG05_SYS_CTRL2, 5, true); // CC_ONESHOT: trigger a single 250ms CC measurement
+}
+
+int16_t BQ76920::readCurrentMA() {
+    // Wait for CC_READY before reading
+    uint8_t sysStat = 0;
+    readReg(BQ76920_REG00_SYS_STAT, &sysStat);
+    if (!(sysStat & BQ76920_SYS_STAT_CC_READY)) {
+        return 0;
+    }
+    uint8_t data[2] = {};
+    readBlock(BQ76920_REG32_CC_HI, data, 2);
+    // Clear CC_READY by writing 1 to bit 7 of SYS_STAT
+    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_CC_READY);
+    int16_t ccRaw = (int16_t)((data[0] << 8) | data[1]);
+    // Each LSB = 8.44 µV across the sense resistor
+    // current_mA = ccRaw * 8440 / (BQ76920_SENSE_RESISTOR_MOHM * 1000)
+    return (int16_t)((int32_t)ccRaw * 8440 / (BQ76920_SENSE_RESISTOR_MOHM * 1000));
+}
+
 bool BQ76920::readStatusRegs(uint8_t out[4]) {
-    if (!readBlock(BQ76920_REG00_SYS_STAT, out, 2)) return false;     // SYS_STAT, CELLBAL1
-    if (!readBlock(BQ76920_REG04_SYS_CTRL1, out + 2, 2)) return false; // SYS_CTRL1, SYS_CTRL2
+    if (!readBlock(BQ76920_REG00_SYS_STAT, out, 2))
+        return false; // SYS_STAT, CELLBAL1
+    if (!readBlock(BQ76920_REG04_SYS_CTRL1, out + 2, 2))
+        return false; // SYS_CTRL1, SYS_CTRL2
     return true;
 }
 
 bool BQ76920::readCellMilliVoltages(uint16_t out[3]) {
-    if (!getCellVoltages()) return false;
+    if (!getCellVoltages())
+        return false;
     out[0] = cellMilliVoltages[0]; // VC1
     out[1] = cellMilliVoltages[1]; // VC2
     out[2] = cellMilliVoltages[4]; // VC5

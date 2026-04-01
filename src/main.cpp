@@ -158,7 +158,7 @@ void setup() {
     logCode3I16(LOG_MAIN_TEMPS, int16_t(ahtTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
     float tMin = min(ahtTemp, min(balancerTemp, chargerTemp));
     float tMax = max(ahtTemp, max(balancerTemp, chargerTemp));
-    if (tMin < 15.0f || tMax > 35.0f) {
+    if (tMin < 15.0f || tMax > 40.0f) {
         logCode(LOG_MAIN_TEMP_OOR);
         waitUntilNextBeep();
         restart();
@@ -276,6 +276,7 @@ void loop() {
 
         BQ25798ADC chargerADC = {};
         charger.readADCAll(chargerADC);
+        int16_t ibat_cc_ma = balancer.readCurrentMA();
 
         int16_t tempAht = int16_t(tempHumidity.temperature() * 10);
         int16_t tempBq76920 = int16_t(bq76920Temp * 10);
@@ -301,8 +302,9 @@ void loop() {
         Serial.write((uint8_t *)&chargerADC.ibus_ma, 2);
         Serial.write((uint8_t *)&chargerADC.vbat_mv, 2);
         Serial.write((uint8_t *)&chargerADC.ibat_ma, 2);
-        Serial.write(chgStat, 5); // REG1B..1F
-        Serial.write(bqStat, 4);  // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+        Serial.write((uint8_t *)&ibat_cc_ma, 2); // BQ76920 CC current
+        Serial.write(chgStat, 5);                // REG1B..1F
+        Serial.write(bqStat, 4);                 // SYS_STAT,CELLBAL1,CTRL1,CTRL2
     }
 #endif
 
@@ -315,6 +317,12 @@ void loop() {
     // measurement completes during sleep and the result is fresh when we read it.
     if (seconds - lastProtectionUpdateSeconds >= 5) {
         tempHumidity.trigger();
+    }
+
+    // Trigger a one-shot CC measurement one second before the status log so the result
+    // is ready (250ms measurement) when we read it.
+    if (seconds - lastStatusLogSeconds >= 9) {
+        balancer.triggerCC();
     }
 
     // FLush the Wire, this makes sure that the ATtiny goes into a proper sleep state.
