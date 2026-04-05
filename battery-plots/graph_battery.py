@@ -55,8 +55,7 @@ def _plot_cell(ax, t, v, balancing, label, color):
 def main(csv_path):
     df = pd.read_csv(csv_path)
 
-    # Parse wall_time as today's date + HH:MM:SS
-    df["wall_time"] = pd.to_datetime(df["wall_time"], format="%H:%M:%S", errors="coerce")
+    df["wall_time"] = pd.to_datetime(df["wall_time"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
 
     numeric_cols = ["cell1_mv", "cell2_mv", "cell3_mv",
                     "vbat_mv", "vbus_mv", "ibus_ma", "ibat_ma", "ibat_cc_ma",
@@ -65,7 +64,7 @@ def main(csv_path):
     df = df.dropna(subset=["wall_time"] + numeric_cols)
 
     # Parse cellbal register: bit 0 = cell1, bit 1 = cell2, bit 4 = cell3 (VC5)
-    cellbal = df["cellbal_hex"].apply(lambda x: int(x, 16) if isinstance(x, str) else 0)
+    cellbal = df["cellbal_hex"].apply(lambda x: int(str(x), 16) if pd.notna(x) else 0).astype(int)
     bal1 = (cellbal & 0x01) != 0
     bal2 = (cellbal & 0x02) != 0
     bal3 = (cellbal & 0x10) != 0
@@ -86,29 +85,45 @@ def main(csv_path):
     dsg_ma   = df["ibat_cc_ma"].clip(upper=0).abs()
     output_w = df["vbat_mv"] / 1000.0 * dsg_ma / 1000.0
 
-    fig, (ax_v, ax_t) = plt.subplots(2, 1, figsize=(14, 9), sharex=True,
-                                      gridspec_kw={"height_ratios": [2, 1]})
-    ax_p = ax_v.twinx()
+    fig, (ax_pack, ax_cell, ax_t) = plt.subplots(3, 1, figsize=(14, 11), sharex=True,
+                                                  gridspec_kw={"height_ratios": [2, 2, 1]})
+    ax_p = ax_pack.twinx()
 
-    # ── Voltage reference lines ──────────────────────────────────────────────
-    ax_v.axhline(9.0,  color="tab:red",   linewidth=1.0, linestyle=":", label="Cutoff 9.0V")
-    ax_v.axhline(12.3, color="tab:olive", linewidth=1.0, linestyle=":", label="Max charge 12.3V")
+    # ── Pack voltage subplot ─────────────────────────────────────────────────
+    ax_pack.axhline(9.0,  color="tab:red",   linewidth=1.0, linestyle=":", label="Cutoff 9.0V")
+    ax_pack.axhline(12.3, color="tab:olive", linewidth=1.0, linestyle=":", label="Max charge 12.3V")
+    ax_pack.plot(t, pack_v, label="Pack voltage (V)", color="black", linewidth=1.5)
 
-    # ── Voltage traces (left axis) ──────────────────────────────────────────
-    ax_v.plot(t, pack_v, label="Pack voltage (V)", color="black", linewidth=1.5)
-    _plot_cell(ax_v, t, cell1_v, bal1, "Cell 1 (V)", "tab:blue")
-    _plot_cell(ax_v, t, cell2_v, bal2, "Cell 2 (V)", "tab:orange")
-    _plot_cell(ax_v, t, cell3_v, bal3, "Cell 3 (V)", "tab:green")
+    pack_lo = min(8.5,  pack_v.min() - 0.1)
+    pack_hi = max(12.8, pack_v.max() + 0.1)
+    ax_pack.set_ylim(pack_lo, pack_hi)
+    ax_pack.set_ylabel("Pack voltage (V)")
 
-    ax_v.set_ylim(bottom=0)
-    ax_v.set_ylabel("Voltage (V)")
-
-    # ── Power traces (right axis) ────────────────────────────────────────────
+    # ── Power traces (right axis of pack subplot) ────────────────────────────
     ax_p.plot(t, input_w,  label="Input power (W)",  color="tab:red",    linewidth=1.0, linestyle="--")
     ax_p.plot(t, output_w, label="Output power (W)", color="tab:purple", linewidth=1.0, linestyle="--")
-
     ax_p.set_ylim(bottom=0)
     ax_p.set_ylabel("Power (W)")
+
+    lines_pack, labels_pack = ax_pack.get_legend_handles_labels()
+    lines_p,    labels_p    = ax_p.get_legend_handles_labels()
+    ax_pack.legend(lines_pack + lines_p, labels_pack + labels_p,
+                   loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=4)
+
+    # ── Cell voltage subplot ─────────────────────────────────────────────────
+    ax_cell.axhline(3.0, color="tab:red",   linewidth=1.0, linestyle=":", label="Min cell 3.0V")
+    ax_cell.axhline(4.1, color="tab:blue",  linewidth=1.0, linestyle=":", label="4.1V")
+    ax_cell.axhline(4.2, color="tab:olive", linewidth=1.0, linestyle=":", label="Max cell 4.2V")
+    _plot_cell(ax_cell, t, cell1_v, bal1, "Cell 1 (V)", "tab:blue")
+    _plot_cell(ax_cell, t, cell2_v, bal2, "Cell 2 (V)", "tab:orange")
+    _plot_cell(ax_cell, t, cell3_v, bal3, "Cell 3 (V)", "tab:green")
+
+    all_cells = pd.concat([cell1_v, cell2_v, cell3_v])
+    cell_lo = min(2.5, all_cells.min() - 0.05)
+    cell_hi = max(4.3, all_cells.max() + 0.05)
+    ax_cell.set_ylim(cell_lo, cell_hi)
+    ax_cell.set_ylabel("Cell voltage (V)")
+    ax_cell.legend(loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=4)
 
     # ── Temperature subplot ───────────────────────────────────────────────────
     ax_t.axhline(0.0,  color="tab:blue", linewidth=1.0, linestyle=":", label="Min temp 0°C")
@@ -119,15 +134,9 @@ def main(csv_path):
 
     ax_t.set_ylabel("Temperature (°C)")
     ax_t.set_xlabel("Time")
-    ax_t.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
+    ax_t.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax_t.xaxis.get_major_locator()))
     ax_t.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=3)
     fig.autofmt_xdate()
-
-    # ── Legend for voltage/power plot ─────────────────────────────────────────
-    lines_v, labels_v = ax_v.get_legend_handles_labels()
-    lines_p, labels_p = ax_p.get_legend_handles_labels()
-    ax_v.legend(lines_v + lines_p, labels_v + labels_p,
-                loc="upper center", bbox_to_anchor=(0.5, -0.05), ncol=4)
 
     fig.suptitle(f"Battery log — {csv_path}")
     plt.tight_layout()

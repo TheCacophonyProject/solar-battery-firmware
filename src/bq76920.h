@@ -30,7 +30,7 @@
 // Voltage where UV protection will trigger in mV
 #define CELL_UV_TARGET 3000
 // Voltage where UV protection will recover in mV
-#define CELL_UV_RECOVERY CELL_UV_TARGET + 700
+#define CELL_UV_RECOVERY CELL_UV_TARGET + 500
 
 #define BQ76920_SYS_STAT_OCD (1 << 0)
 #define BQ76920_SYS_STAT_SCD (1 << 1)
@@ -142,10 +142,11 @@ class BQ76920 {
     bool readCellMilliVoltages(uint16_t out[3]); // out: [cell1, cell2, cell3] in mV
     bool readStatusRegs(uint8_t out[4]);         // out: SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
     void triggerCC();                            // trigger a one-shot CC measurement
-    int16_t readCurrentMA();                     // read and clear CC result; positive = charging, negative = discharging
+    int16_t readCurrentMA(); // read and clear CC result; positive = charging, negative = discharging
     BQ76920_OCD_SCD_STATE getOCDSCDState();
     bool isLoadPresent();
     void clearOCDSCDFault();
+    void clearUVFault();
 
   private:
     uint16_t calculateADC(uint8_t msb, uint8_t lsb);

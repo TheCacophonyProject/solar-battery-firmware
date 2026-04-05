@@ -68,6 +68,7 @@ CODES = {
     0x29: ("BQ25798 temperature fault",        None,    []),
     0x2A: ("AHT20 reading",                    "<hH",   ["temp_c_x10", "humidity_pct_x10"]),
     0x2B: ("Protection state change",          "<B",    ["state_flags"]),
+    0x2C: ("BQ25798 NTC temp",                 "<h",    ["temp_c_x10"]),
 
     # AHT20 ── 0x50–0x58
     0x50: ("AHT20 status read failed",         None,    []),

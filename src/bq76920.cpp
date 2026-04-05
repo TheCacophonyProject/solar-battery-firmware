@@ -16,6 +16,9 @@ bool BQ76920::begin() {
     getADCGainAndOffset();
     writeOVandUVTripVoltages();
     writeProtectionRegisters();
+    // Select external NTC (TS1) for temperature readings.
+    // Must be set here so the ADC has time to complete a conversion before the first readTemp() call.
+    setBit(BQ76920_REG04_SYS_CTRL1, 3, true);
     return true;
 }
 
@@ -142,58 +145,41 @@ void BQ76920::getADCGainAndOffset() {
 }
 
 BQ76920_OV_UV_STATE BQ76920::getOVUVState() {
-    // TOOD: Add hysteresis for cell recovery so as to not trip right away again.
-
-    // Get state if there is a UV or OV trip.
     uint8_t sysStat;
     readReg(BQ76920_REG00_SYS_STAT, &sysStat);
-    if (!(sysStat & BQ76920_SYS_STAT_OV) && !(sysStat & BQ76920_SYS_STAT_UV)) {
-        // No OV or UV trip, we are healthy.
+
+    bool hwUV = sysStat & BQ76920_SYS_STAT_UV;
+    bool hwOV = sysStat & BQ76920_SYS_STAT_OV;
+
+    if (!hwUV && !hwOV) {
         return BQ76920_OV_UV_STATE::HEALTHY;
     }
 
-    // Get new cell voltage readings
-    getCellVoltages();
+    // The UV bit is a hardware latch — trust it unconditionally.
+    // Recovery is handled externally: uvCellRecovered() checks the 3700mV threshold
+    // and clearUVFault() clears the bit only after full recovery.
+    if (hwUV && hwOV) {
+        return BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE;
+    }
+    if (hwUV) {
+        return BQ76920_OV_UV_STATE::UNDER_VOLTAGE;
+    }
 
-    // Check if we have an OV or UV
-    bool ov = false;
-    bool uv = false;
+    // OV only: verify with current cell readings and clear the bit if resolved.
+    getCellVoltages();
     for (int i = 0; i < 5; i++) {
         if (cellShouldBePopulated(i)) {
             if (cellMilliVoltages[i] < 20) {
                 logCode(LOG_BQ_CELL_MISSING);
-                // TODO: What do we do here?
             }
-
             if (cellMilliVoltages[i] >= cellOVMilliVoltage) {
                 logCodeU16(LOG_BQ_CELL_MV, cellMilliVoltages[i]);
-                ov = true;
-            }
-            if (cellMilliVoltages[i] <= cellUVMilliVoltage) {
-                logCodeU16(LOG_BQ_CELL_MV, cellMilliVoltages[i]);
-                uv = true;
-            }
-        } else {
-            if (cellMilliVoltages[i] > 20) {
-                logCode(LOG_BQ_CELL_EXTRA);
-                // TODO: What do we do here?
+                return BQ76920_OV_UV_STATE::OVER_VOLTAGE;
             }
         }
     }
-
-    // If a unhealthy state is found, return it.
-    if (ov && uv) {
-        return BQ76920_OV_UV_STATE::UNDER_VOLTAGE_AND_OVER_VOLTAGE;
-    }
-    if (ov) {
-        return BQ76920_OV_UV_STATE::OVER_VOLTAGE;
-    }
-    if (uv) {
-        return BQ76920_OV_UV_STATE::UNDER_VOLTAGE;
-    }
-
-    // No unhealthy state is found, clear the OV and UV trip bits.
-    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_OV | BQ76920_SYS_STAT_UV);
+    // OV bit set but cells are now below threshold — clear it and return healthy.
+    writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_OV);
     return BQ76920_OV_UV_STATE::HEALTHY;
 }
 
@@ -518,6 +504,10 @@ bool BQ76920::isLoadPresent() {
 // Call this only after verifying the fault condition has cleared (load removed).
 // The host must re-enable DSG after calling this.
 void BQ76920::clearOCDSCDFault() { writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_SCD | BQ76920_SYS_STAT_OCD); }
+
+// clearUVFault clears the UV latch in SYS_STAT.
+// Call only after uvCellRecovered() returns true (all cells > CELL_UV_RECOVERY).
+void BQ76920::clearUVFault() { writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_UV); }
 
 void BQ76920::shipMode() {
     stopCellBalancing();

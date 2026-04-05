@@ -43,6 +43,7 @@
 #define LOG_PROT_BQ25798_T_ERR  0x29  // BQ25798 temperature fault
 #define LOG_PROT_AHT20          0x2A  // AHT20 readings;         payload: i16 temp (°C × 10), u16 humidity (% × 10)
 #define LOG_PROT_STATE          0x2B  // State change;           payload: u8 flags (bit0=healthy, bit1=chg, bit2=discharge, bit3=bal)
+#define LOG_PROT_CHARGER_TEMP   0x2C  // BQ25798 NTC temp;       payload: i16 (°C × 10)
 
 // ── AHT20 (0x50–0x5F) ────────────────────────────────────────────────────────
 #define LOG_AHT_STATUS_FAIL            0x50  // Status read failed

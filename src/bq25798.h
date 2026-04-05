@@ -159,7 +159,6 @@ class BQ25798 {
     void sleepMode();
     bool haveInputSource();
     bool vbatOvpStat();
-    BQ25798_TEMP getTemperatureStatus();
     uint32_t poorSourceTime = 0;
     void readFlags();
     bool inHighInputImpedance();

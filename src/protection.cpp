@@ -22,6 +22,7 @@ void ProtectionState::update() {
     // This has some hysteresis to prevent cells close to under voltage turning
     // back on too quickly.
     if (cellUnderVoltageProtection && balancer.uvCellRecovered()) {
+        balancer.clearUVFault();
         logCode(LOG_PROT_UV_RECOVERED);
         cellUnderVoltageProtection = false;
     }
@@ -82,28 +83,26 @@ void ProtectionState::update() {
         newBalancingEnabled = false;
     }
 
-    // ===== Running the charger checks =======
-    if (!charger.isSleeping()) {
-        // Pack Over Voltage check by reading hte VBAT_OVP_STAT reg from
-        // FAULT_Status_0
-        if (charger.vbatOvpStat()) {
-            logCode(LOG_PROT_VBAT_OVP);
-            newChargeEnabled = false;
-        }
+    // Before doing charger checks we will check if it is in sleep mode.
+    bool chargerWasSleeping = charger.isSleeping();
 
-        // Checking BQ25798 external temperature sensor.
-        // It seams the BQ25798 charger will only set the state to COLD, COOL, WARM, or HOT if it has a good input
-        // source for charging. We have other temperature sensors so we can check those. when we don't have a good input
-        // source.
-        // TODO: We can make manual temperature readings to see if it is COLD, COOL, WARM, or HOT so at some point we
-        // should implement that.
-        BQ25798_TEMP bq25798_temp_state = charger.getTemperatureStatus();
-        if (bq25798_temp_state == BQ25798_TEMP::HOT || bq25798_temp_state == BQ25798_TEMP::COLD) {
-            logCode(LOG_PROT_BQ25798_T_ERR);
-            newChargeEnabled = false;
-            newDischargeEnabled = false;
-            newBalancingEnabled = false;
-        }
+    // Check the temperature sensor connected to the charger
+    float temp2 = charger.readTemp();
+    logCodeI16(LOG_PROT_CHARGER_TEMP, int16_t(temp2 * 10));
+    if (temp2 <= TEMPERATURE_POINT_1 || temp2 >= TEMPERATURE_POINT_5) {
+        newChargeEnabled = false;
+        newDischargeEnabled = false;
+        newBalancingEnabled = false;
+    }
+
+    if (charger.vbatOvpStat()) {
+        logCode(LOG_PROT_VBAT_OVP);
+        newChargeEnabled = false;
+    }
+
+    // If the charger was in sleep mode then put it back in sleep mode.
+    if (chargerWasSleeping) {
+        charger.sleepMode();
     }
 
     // Checking AHT20 humidity. High humidity risks condensation inside the pack.

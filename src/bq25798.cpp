@@ -285,23 +285,6 @@ void BQ25798::init() {
     // 0x48 REG48_Part_Information -- Read only.
 }
 
-BQ25798_TEMP BQ25798::getTemperatureStatus() {
-    uint8_t data;
-    if (data & BQ25798_TS_HOT_STAT) {
-        return BQ25798_TEMP::HOT;
-    }
-    if (data & BQ25798_TS_COLD_STAT) {
-        return BQ25798_TEMP::COLD;
-    }
-    if (data & BQ25798_TS_WARM_STAT) {
-        return BQ25798_TEMP::WARM;
-    }
-    if (data & BQ25798_TS_COOL_STAT) {
-        return BQ25798_TEMP::COOL;
-    }
-    return BQ25798_TEMP::GOOD;
-}
-
 void BQ25798::checkStatus() {
     uint8_t statusRegisterData;
     readReg(BQ25798_REG1C_CHARGER_STATUS_1, &statusRegisterData);

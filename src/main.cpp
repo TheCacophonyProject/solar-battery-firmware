@@ -76,6 +76,17 @@ void setup() {
     // Setup serial interface if enabled
 #if SERIAL_ENABLE
     Serial.begin(9600);
+
+    // Untested/reviewed code.
+    // // Mirror inverted UART TX (PB2) onto PC3 using CCL LUT1.
+    // // LUT1 output pin is PC3; truth table 0x55 = NOT(IN0).
+    // PORTC.DIR |= PIN3_bm;
+    // CCL.LUT1CTRLB = CCL_INSEL0_USART0_gc; // IN0 = USART0 TX, IN1 = MASK
+    // CCL.LUT1CTRLC = 0;                    // IN2 = MASK
+    // CCL.TRUTH1    = 0x55;                 // NOT(IN0)
+    // CCL.LUT1CTRLA = CCL_OUTEN_bm | CCL_ENABLE_bm;
+    // CCL.CTRLA     = CCL_ENABLE_bm;
+
     logCode(LOG_MAIN_STARTING);
 #endif
 
