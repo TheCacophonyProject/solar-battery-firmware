@@ -148,6 +148,11 @@ void setup() {
     // Once we have found the BQ76920 we should turn off the charging so we can get a good read on what the cell
     // voltages are on start up.
     charger.disable();
+
+    // Extended delay to give time to make voltage and temperature readings.
+    wdt_reset();
+    delay(1000);
+    wdt_reset();
     delay(1000);
 
     if (!balancer.properCellPopulation()) {
