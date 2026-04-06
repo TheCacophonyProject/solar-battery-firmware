@@ -240,7 +240,7 @@ def run(port, baud, csv_path=None):
                     continue
 
                 code = raw[0]
-                ts = time.strftime("%H:%M:%S")
+                ts = time.strftime("%Y-%m-%d %H:%M:%S")
 
                 if code not in CODES:
                     print(f"[{ts}] 0x{code:02X}  (unknown)")
