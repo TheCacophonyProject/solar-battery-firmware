@@ -32,14 +32,11 @@ Faults and recovery:
 - [x] Disable with high and low temperature.
 - [x] Recover from high and low temperature.
 - [x] Hysteresis for low voltage cell recovery.
-
-TODO:
-
-- [ ] Disable with short circuit: Need to change sense resistor for this.
-- [ ] Recover from short circuit.
-- [ ] Disable with over current: Need to change sense resistor for this.
-- [ ] Recover from over current
-- [ ] Disable from high humidity. Do we want to require a full restart to recover from this error as it means water might have got in the battery case?
+- [x] Disable with short circuit.
+- [x] Recover from short circuit.
+- [x] Disable with over current.
+- [x] Recover from over current
+- [x] Disable from high humidity.
 
 ## Set input source
 
