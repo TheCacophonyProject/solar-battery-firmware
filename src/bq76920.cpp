@@ -57,7 +57,11 @@ bool BQ76920::writeReg(bq76920_reg_t reg, uint8_t data) {
     uint8_t bytes[] = {0x10, reg, data};
     uint8_t crc = crc8_atm(bytes, 3);
     uint8_t writeBytes[] = {data, crc};
-    return i2c_.write(BQ76920_ADDRESS, reg, writeBytes, 2);
+    bool ok = i2c_.write(BQ76920_ADDRESS, reg, writeBytes, 2);
+    if (!ok) {
+        found = false;
+    }
+    return ok;
 }
 
 bool BQ76920::writeBlock(bq76920_reg_t reg, uint8_t data[], uint8_t len) {
@@ -73,20 +77,29 @@ bool BQ76920::writeBlock(bq76920_reg_t reg, uint8_t data[], uint8_t len) {
         writeData[i * 2] = data[i];
         writeData[i * 2 + 1] = crc8_atm(&data[i], 1);
     }
-    return i2c_.write(BQ76920_ADDRESS, reg, writeData, len * 2);
+    bool ok = i2c_.write(BQ76920_ADDRESS, reg, writeData, len * 2);
+    if (!ok) {
+        found = false;
+    }
+    return ok;
 }
 
 bool BQ76920::readReg(bq76920_reg_t reg, uint8_t *data) {
     uint8_t readData[2];
-    i2c_.read(BQ76920_ADDRESS, reg, readData, 2);
+    if (!i2c_.read(BQ76920_ADDRESS, reg, readData, 2)) {
+        found = false;
+        return false;
+    }
     uint8_t readCRC = readData[1];
     // the data used to calculate the CRC is the write address and the data bit.
     uint8_t crcData[] = {0x11, readData[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != readCRC) {
         logCode(LOG_BQ_CRC_ERR);
+        found = false;
         return false;
     }
+    found = true;
     *data = readData[0];
     return true;
 }
@@ -95,12 +108,16 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
     // Need a custom read function to handle the CRC.
     // We need to read twice the bytes to get the CRC bytes also.
     uint8_t dataAndCRC[2 * len];
-    i2c_.read(BQ76920_ADDRESS, reg, dataAndCRC, len * 2);
+    if (!i2c_.read(BQ76920_ADDRESS, reg, dataAndCRC, len * 2)) {
+        found = false;
+        return false;
+    }
     // The first CRC byte is the read address (0x11) and the first data byte.
     uint8_t crcData[] = {0x11, dataAndCRC[0]};
     uint8_t calculatedCRC = crc8_atm(crcData, 2);
     if (calculatedCRC != dataAndCRC[1]) {
         logCode(LOG_BQ_CRC0_ERR);
+        found = false;
         return false;
     }
     data[0] = dataAndCRC[0];
@@ -111,10 +128,12 @@ bool BQ76920::readBlock(bq76920_reg_t reg, uint8_t data[], size_t len) {
         calculatedCRC = crc8_atm(crcData, 1);
         if (calculatedCRC != dataAndCRC[i * 2 + 1]) {
             logCode(LOG_BQ_CRCN_ERR);
+            found = false;
             return false;
         }
         data[i] = dataAndCRC[i * 2];
     }
+    found = true;
     return true;
 }
 

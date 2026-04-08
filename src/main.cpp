@@ -248,6 +248,15 @@ void loop() {
         logCode(LOG_MAIN_BALANCER_INT);
     }
 
+    // If the balancer lost power (e.g. during a short circuit), try to re-initialize it.
+    if (!balancer.found) {
+        logCode(LOG_MAIN_BQ76920_NOT_FOUND);
+        wakeUpBalancer();
+        if (balancer.begin()) {
+            logCode(LOG_MAIN_BQ76920_FOUND);
+        }
+    }
+
     // Run the main logic depending on what mode the battery is in.
     if (sleepModeEnabled) {
         sleepMode();

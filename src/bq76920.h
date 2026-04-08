@@ -125,6 +125,7 @@ enum class BQ76920_OCD_SCD_STATE {
 
 class BQ76920 {
   public:
+    bool found = false;
     bool begin();
     void updateBalanceRoutine();
     void stopCellBalancing();
