@@ -4,11 +4,11 @@
 
 // Datasheet: AHT20 Humidity and Temperature Sensor, ASAIR V1.0 May 2021
 
-// readData writes AHT20_STATUS_REG (0x71) then reads 7 bytes.
-// This matches the Go driver pattern: Tx(addr, {0x71}, 7).
-bool AHT20::readData(uint8_t buf[7]) {
-    return i2c_.read(AHT20_ADDR, AHT20_STATUS_REG, buf, 7);
-}
+// readData reads 7 bytes directly from the AHT20 with no preceding write.
+// The AHT20 is not register-addressed: writing 0x71 before a read returns a
+// status-only response (data bytes all zero). A plain requestFrom returns the
+// full status + measurement payload.
+bool AHT20::readData(uint8_t buf[7]) { return i2c_.readDirect(AHT20_ADDR, buf, 7); }
 
 // crc8 calculates CRC-8/MAXIM: polynomial 0x31, init 0xFF (section 7.4).
 uint8_t AHT20::crc8(uint8_t *data, uint8_t len) {
@@ -32,9 +32,15 @@ bool AHT20::begin() {
         return false;
     }
 
-    if ((buf[0] & AHT20_CALIBRATED) == AHT20_CALIBRATED) {
+    logCodeU8(LOG_AHT_STATUS, buf[0]);
+
+    // From section 7.4 of datasheet: Check status register & 0x18 == 0x18
+    if ((buf[0] & AHT20_READY) == AHT20_READY) {
+        delay(10);
         return true;
     }
+
+    logCodeU8(LOG_AHT_STATUS, buf[0]);
 
     // Not calibrated: send 0xBE 0x08 0x00 to load calibration coefficients.
     uint8_t initParams[] = {0x08, 0x00};
@@ -48,10 +54,11 @@ bool AHT20::begin() {
         logCode(LOG_AHT_STATUS_AFTER_INIT_FAIL);
         return false;
     }
-    if ((buf[0] & AHT20_CALIBRATED) != AHT20_CALIBRATED) {
+    if ((buf[0] & AHT20_READY) != AHT20_READY) {
         logCode(LOG_AHT_NOT_CALIBRATED);
         return false;
     }
+    delay(10);
     return true;
 }
 
@@ -86,9 +93,9 @@ bool AHT20::readResult() {
         return false;
     }
 
-    uint32_t rawHum  = ((uint32_t)buf[1] << 12) | ((uint32_t)buf[2] << 4) | (buf[3] >> 4);
+    uint32_t rawHum = ((uint32_t)buf[1] << 12) | ((uint32_t)buf[2] << 4) | (buf[3] >> 4);
     uint32_t rawTemp = ((uint32_t)(buf[3] & 0x0F) << 16) | ((uint32_t)buf[4] << 8) | buf[5];
-    humidity_    = (float)rawHum / 1048576.0f * 100.0f;
+    humidity_ = (float)rawHum / 1048576.0f * 100.0f;
     temperature_ = (float)rawTemp / 1048576.0f * 200.0f - 50.0f;
     return true;
 }

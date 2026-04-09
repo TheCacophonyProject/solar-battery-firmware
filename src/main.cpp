@@ -160,6 +160,8 @@ void setup() {
         waitUntilNextBeep();
         restart();
     }
+    waitUntilNextBeep();
+    buzzer_beep();
 
     // Check that temperature readings are sensible at startup.
     // All sensors must read 15–35 °C and agree within 10 °C of each other.

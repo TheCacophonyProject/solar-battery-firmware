@@ -10,6 +10,7 @@
 #define AHT20_STATUS_REG    0x71 // Written before every read to get status/data
 #define AHT20_BUSY          (1u << 7)
 #define AHT20_CALIBRATED    (1u << 3)
+#define AHT20_READY         (0x18u) // bits 3 and 4 must both be set (section 7.4)
 #define AHT20_CMD_TRIGGER   0xAC // Trigger measurement (params: 0x33 0x00)
 #define AHT20_CMD_INIT      0xBE // Initialise calibration (params: 0x08 0x00)
 
@@ -41,6 +42,7 @@ class AHT20 {
   private:
     // readData writes AHT20_STATUS_REG then reads 7 bytes (status + 5 data + CRC).
     bool readData(uint8_t buf[7]);
+    void resetCalReg(uint8_t reg);
     // crc8 calculates CRC-8 with polynomial 0x31, init 0xFF (section 7.4).
     uint8_t crc8(uint8_t *data, uint8_t len);
 

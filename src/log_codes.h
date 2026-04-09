@@ -55,6 +55,7 @@
 #define LOG_AHT_BUSY                   0x56  // Sensor still busy
 #define LOG_AHT_CRC_ERR                0x57  // CRC mismatch
 #define LOG_AHT_TIMEOUT                0x58  // Measurement timeout
+#define LOG_AHT_STATUS                 0x59  // Status byte at begin(); payload: u8 status
 
 // ── Util (0x60–0x6F) ─────────────────────────────────────────────────────────
 #define LOG_UTIL_BUZZER_ERR     0x60  // Buzzer frequency out of range
@@ -102,6 +103,9 @@
 #define LOG_BQ_TEST_MAX_V   0x45  // Test mode: max cell voltage active
 #define LOG_BQ_TEST_MIN_V   0x46  // Test mode: min cell voltage active
 #define LOG_BQ_CELL_MV      0x47  // Cell mV (debug, sent once per cell 0-4); payload: u16 (mV)
+
+// ── Debug (0xD0) ─────────────────────────────────────────────────────────────
+#define LOG_DEBUG  0xD0  // Generic debug; payload: u8 id, u8 value
 
 // ── I2C (0x80–0x8F) ──────────────────────────────────────────────────────────
 #define LOG_I2C_QUEUE_ERR   0x80  // Failed to queue register byte in read()

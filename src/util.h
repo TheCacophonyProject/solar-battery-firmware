@@ -38,6 +38,11 @@ inline void logCodeU8(uint8_t code, uint8_t a) {
     Serial.write(code);
     Serial.write(a);
 }
+inline void logCodeU8U8(uint8_t code, uint8_t a, uint8_t b) {
+    Serial.write(code);
+    Serial.write(a);
+    Serial.write(b);
+}
 // payload: i16 a, u16 b
 inline void logCodeI16U16(uint8_t code, int16_t a, uint16_t b) {
     Serial.write(code);
@@ -62,6 +67,7 @@ inline void logCodeU16(uint8_t, uint16_t) {}
 inline void logCodeI16(uint8_t, int16_t) {}
 inline void logCodeU8U16U16(uint8_t, uint8_t, uint16_t, uint16_t) {}
 inline void logCodeU8(uint8_t, uint8_t) {}
+inline void logCodeU8U8(uint8_t, uint8_t, uint8_t) {}
 inline void logCodeI16U16(uint8_t, int16_t, uint16_t) {}
 inline void logCodeBytes(uint8_t, const uint8_t *, uint8_t) {}
 inline void logCode3I16(uint8_t, int16_t, int16_t, int16_t) {}

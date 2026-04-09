@@ -80,9 +80,13 @@ CODES = {
     0x56: ("AHT20 busy",                       None,    []),
     0x57: ("AHT20 CRC mismatch",               None,    []),
     0x58: ("AHT20 measurement timeout",        None,    []),
+    0x59: ("AHT20 status",                     "<B",    ["aht_status"]),
 
     # Util ── 0x60
     0x60: ("Buzzer frequency error",           None,    []),
+
+    # Debug ── 0xD0
+    0xD0: ("Debug",                            "<BB",   ["id", "value"]),
 
     # I2C ── 0x80–0x81
     0x80: ("I2C failed to queue reg byte",     None,    []),
@@ -199,6 +203,15 @@ def fmt_payload(fields, values):
             parts.append(f"chg={CHG_CHARGE_STATUS.get(val, f'0x{val:02X}')}")
         elif name == "vbus_status":
             parts.append(f"vbus={CHG_VBUS_STATUS.get(val, f'0x{val:02X}')}")
+        elif name == "aht_status":
+            busy  = "BUSY"  if val & 0x80 else "idle"
+            cal   = "CAL"   if val & 0x08 else "UNCAL"
+            bit4  = "b4=1"  if val & 0x10 else "b4=0"
+            parts.append(f"0x{val:02X} ({busy}, {cal}, {bit4})")
+        elif name == "id":
+            parts.append(f"id=0x{val:02X}")
+        elif name == "value":
+            parts.append(f"value=0x{val:02X}")
         elif name in ("fault0", "fault1", "reg_data", "reg", "err_code"):
             parts.append(f"{name}=0x{val:02X}")
         elif name in ("written", "read_back"):

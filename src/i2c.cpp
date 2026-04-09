@@ -37,6 +37,16 @@ bool I2C::read(uint8_t address, uint8_t reg, uint8_t data[], uint8_t len) {
     return endTransmission();
 }
 
+// readDirect reads len bytes from address with no preceding register write.
+// Use for peripherals like AHT20 that don't use a register-addressed read.
+bool I2C::readDirect(uint8_t address, uint8_t data[], uint8_t len) {
+    Wire.requestFrom(address, len);
+    for (uint8_t i = 0; i < len; i++) {
+        data[i] = Wire.read();
+    }
+    return true;
+}
+
 // readReg will read data from a single register
 bool I2C::readReg(uint8_t address, uint8_t reg, uint8_t *data) {
     uint8_t dataArray[1];
