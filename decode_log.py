@@ -6,14 +6,18 @@ Reads binary log codes from the ATtiny1616 over UART and prints
 human-readable output. Codes and payload formats must match log_codes.h.
 
 Usage:
-    python3 decode_log.py [port] [baud]
+    python3 decode_log.py [port] [baud] [csv]
+    python3 decode_log.py --gpio PIN [--baud BAUD] [--csv FILE]
 
-    port  - serial device, default /dev/ttyAMA0
+    port  - serial device, default /dev/ttyUSB0
     baud  - baud rate,     default 9600
     csv   - output CSV file, default battery_YYYYMMDD_HHMMSS.csv
 
-Install dependency:
-    pip3 install pyserial
+    --gpio PIN  use a GPIO pin for bit-bang UART RX instead of a serial port
+                (requires pigpio: pip3 install pigpio; sudo pigpiod)
+
+Install dependencies:
+    pip3 install pyserial pigpio
 """
 
 import csv
@@ -23,6 +27,47 @@ import sys
 import time
 
 import serial
+
+
+class GPIOSerial:
+    """Bit-bang UART RX on a GPIO pin using pigpio."""
+
+    def __init__(self, gpio, baud):
+        import pigpio
+        self._gpio = gpio
+        self._pi = pigpio.pi()
+        if not self._pi.connected:
+            raise RuntimeError("pigpio daemon not running — start it with: sudo pigpiod")
+        try:
+            self._pi.bb_serial_read_close(gpio)  # close if left open from a previous run
+        except Exception:
+            pass
+        self._pi.bb_serial_read_open(gpio, baud)
+        self._buf = bytearray()
+
+    def read(self, n):
+        deadline = time.monotonic() + 2.0
+        while len(self._buf) < n:
+            _, data = self._pi.bb_serial_read(self._gpio)
+            if data:
+                self._buf.extend(data)
+            elif time.monotonic() > deadline:
+                break
+            else:
+                time.sleep(0.001)
+        result = bytes(self._buf[:n])
+        self._buf = self._buf[n:]
+        return result
+
+    def close(self):
+        self._pi.bb_serial_read_close(self._gpio)
+        self._pi.stop()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
 
 # ── Code table ────────────────────────────────────────────────────────────────
 # Each entry: code -> (label, struct_fmt, field_names)
@@ -84,6 +129,7 @@ CODES = {
 
     # Util ── 0x60
     0x60: ("Buzzer frequency error",           None,    []),
+    0x61: ("Debug",                            "<BB",   ["id", "value"]),
 
     # Debug ── 0xD0
     0xD0: ("Debug",                            "<BB",   ["id", "value"]),
@@ -203,16 +249,7 @@ def fmt_payload(fields, values):
             parts.append(f"chg={CHG_CHARGE_STATUS.get(val, f'0x{val:02X}')}")
         elif name == "vbus_status":
             parts.append(f"vbus={CHG_VBUS_STATUS.get(val, f'0x{val:02X}')}")
-        elif name == "aht_status":
-            busy  = "BUSY"  if val & 0x80 else "idle"
-            cal   = "CAL"   if val & 0x08 else "UNCAL"
-            bit4  = "b4=1"  if val & 0x10 else "b4=0"
-            parts.append(f"0x{val:02X} ({busy}, {cal}, {bit4})")
-        elif name == "id":
-            parts.append(f"id=0x{val:02X}")
-        elif name == "value":
-            parts.append(f"value=0x{val:02X}")
-        elif name in ("fault0", "fault1", "reg_data", "reg", "err_code"):
+        elif name in ("fault0", "fault1", "reg_data", "reg", "err_code", "id", "value"):
             parts.append(f"{name}=0x{val:02X}")
         elif name in ("written", "read_back"):
             parts.append(f"{name}=0x{val:04X}")
@@ -235,15 +272,19 @@ CSV_HEADER = [
 ]
 
 
-def run(port, baud, csv_path=None):
+def run(port, baud, csv_path=None, gpio_pin=None):
     if csv_path is None:
         csv_path = datetime.datetime.now().strftime("battery_%Y%m%d_%H%M%S.csv")
-    print(f"Opening {port} at {baud} baud …")
+    if gpio_pin is not None:
+        print(f"Opening GPIO{gpio_pin} at {baud} baud (bit-bang RX) …")
+    else:
+        print(f"Opening {port} at {baud} baud …")
     print(f"CSV output → {csv_path}\n")
     with open(csv_path, "w", newline="") as csv_file:
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(CSV_HEADER)
-        with serial.Serial(port, baud, timeout=2) as ser:
+        ser_ctx = GPIOSerial(gpio_pin, baud) if gpio_pin is not None else serial.Serial(port, baud, timeout=2)
+        with ser_ctx as ser:
             print("Listening. Press Ctrl-C to stop.\n")
             cell_idx = 0
 
@@ -340,11 +381,23 @@ def run(port, baud, csv_path=None):
 
 
 if __name__ == "__main__":
-    _port     = sys.argv[1] if len(sys.argv) > 1 else "/dev/ttyUSB0"
-    _baud     = int(sys.argv[2]) if len(sys.argv) > 2 else 9600
-    _csv_path = sys.argv[3] if len(sys.argv) > 3 else None
+    import argparse
+    parser = argparse.ArgumentParser(description="ATtiny1616 battery manager log decoder")
+    parser.add_argument("port", nargs="?", default="/dev/ttyUSB0",
+                        help="serial device (default: /dev/ttyUSB0)")
+    parser.add_argument("baud", nargs="?", type=int, default=9600,
+                        help="baud rate (default: 9600)")
+    parser.add_argument("csv", nargs="?", default=None,
+                        help="CSV output file (default: battery_YYYYMMDD_HHMMSS.csv)")
+    parser.add_argument("--gpio", type=int, default=None, metavar="PIN",
+                        help="use GPIO PIN for bit-bang UART RX instead of a serial port")
+    parser.add_argument("--baud", type=int, dest="baud_flag", default=None, metavar="BAUD",
+                        help="baud rate when using --gpio (overrides positional baud)")
+    args = parser.parse_args()
+
+    _baud = args.baud_flag if args.baud_flag is not None else args.baud
     try:
-        run(_port, _baud, _csv_path)
+        run(args.port, _baud, args.csv, gpio_pin=args.gpio)
     except KeyboardInterrupt:
         print("\nStopped.")
     except serial.SerialException as e:

@@ -59,6 +59,7 @@
 
 // ── Util (0x60–0x6F) ─────────────────────────────────────────────────────────
 #define LOG_UTIL_BUZZER_ERR     0x60  // Buzzer frequency out of range
+#define LOG_DEBUG               0x61  // Debug;  payload: u8 id, u8 value
 
 // ── BQ25798 (0x70–0x7F) ──────────────────────────────────────────────────────
 #define LOG_CHG_BAD_PART        0x70  // Bad part number;               payload: u8 regData

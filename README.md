@@ -1,4 +1,35 @@
-# Notes
+# Solar Battery
+
+## Programming Setup
+
+### Hardware setup
+
+- Raspberry Pi3
+- Programmer cable
+
+### Software Setup
+
+- Get a Raspberry Pi 3 setup with a clean image
+- Run `sudo apt install pipx`
+- Run `pipx install pymcuprog`
+- Run `pipx ensurepath`
+- At the end of `/boot/firmware/config.txt` add
+
+``` txt
+# Disable Bluetooth to free up a UART to program the attiny1616
+dtoverlay=disable-bt
+dtoverlay=pi3-disable-bt
+enable_uart=1
+```
+
+- Reboot Raspberry Pi
+
+## Programming
+
+- Power up the board. The programmer doesn't supply power to the attiny so you need to power it up from the main power in.
+- Plug in the programmer and run `pymcuprog -d attiny1616 -t uart -u /dev/serial0 ping` to ensure you can connect to the device.
+- Run `pymcuprog -d attiny1616 -t uart -u /dev/serial0 erase` Before programming it should get erased.
+- Run `pymcuprog -d attiny1616 -t uart -u /dev/serial0 write -f <firmware-file>`
 
 ## TODO
 

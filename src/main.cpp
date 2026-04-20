@@ -24,6 +24,7 @@ ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidit
 #define PIN_ALERT PIN_PA6     // BQ76920 ALERT
 #define PIN_INTERRUPT PIN_PA2 // BQ25798 Interrupt
 #define PIN_CE PIN_PA5        // BQ25798 ~Charge Enable
+#define PIN_PULL_SENSE_LOW PIN_PC3
 
 uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
@@ -69,6 +70,7 @@ void setup() {
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
+    // PIN_PULL_SENSE_LOW (PC3) direction is set by the CCL setup below — do not pinMode() here.
 
     // Set pin initial states
     ledOff();
@@ -77,19 +79,46 @@ void setup() {
 #if SERIAL_ENABLE
     Serial.begin(9600);
 
-    // Untested/reviewed code.
     // // Mirror inverted UART TX (PB2) onto PC3 using CCL LUT1.
-    // // LUT1 output pin is PC3; truth table 0x55 = NOT(IN0).
-    // PORTC.DIR |= PIN3_bm;
-    // CCL.LUT1CTRLB = CCL_INSEL0_USART0_gc; // IN0 = USART0 TX, IN1 = MASK
+    // // USART0 TXD is only available on INSEL1 (0xA); INSEL0 0xA gives XCK instead.
+    // // Truth table 0x01 = NOT(IN1): indices 0 (IN1=0) and 2 (IN1=1) are the only
+    // // reachable entries since IN0 and IN2 are masked.
+    // // CCL config registers are enable-protected: must disable CCL before writing them.
+    // CCL.CTRLA = 0;                        // Disable CCL globally before configuring
+    // CCL.LUT1CTRLA = 0;                    // Disable LUT1 before configuring
+    // PORTMUX.CTRLA &= ~(1 << 5);           // LUT1 output → PC3 (default, bit5=0; bit5=1 would be alternative pin)
+    // PORTC.DIR |= PIN3_bm;                 // Set PC3 as output (required for CCL LUT1 to drive the pin)
+    // CCL.LUT1CTRLB = CCL_INSEL1_USART0_gc; // Set IN1 to USART0 TXD. So when TX is HIGH, IN1 is True. IN0 = MASK
     // CCL.LUT1CTRLC = 0;                    // IN2 = MASK
-    // CCL.TRUTH1    = 0x55;                 // NOT(IN0)
-    // CCL.LUT1CTRLA = CCL_OUTEN_bm | CCL_ENABLE_bm;
-    // CCL.CTRLA     = CCL_ENABLE_bm;
+    // CCL.TRUTH1 = 0xFF;                    // DEBUG: always HIGH to verify CCL is driving pin
+    // CCL.LUT1CTRLA = CCL_OUTEN_bm | CCL_ENABLE_bm; // Enable LUT1 and output to Pin
+    // CCL.CTRLA = CCL_ENABLE_bm;            // Enable CCL
 
-    logCode(LOG_MAIN_STARTING);
+    // debug(0xE0, CCL.CTRLA);
+    // debug(0xE1, CCL.LUT1CTRLA);
+    // debug(0xE2, CCL.LUT1CTRLB);
+    // debug(0xE3, CCL.TRUTH1);
+    // debug(0xE4, PORTMUX.CTRLA);
+    // debug(0xE5, PORTC.DIR);        // Expect bit3 set (0x08)
+    // debug(0xE6, PORTC.PIN3CTRL);   // Expect 0x00 — bit0=INVEN, if set it inverts the output
+
+    // while (true) {
+    //     logCode(LOG_MAIN_STARTING);
+    //     delay(1000);
+    //     wdt_reset();
+    // }
+
 #endif
 
+    // while (true) {
+    //     logCode(LOG_MAIN_STARTING);
+    //     delay(1000);
+    //     wdt_reset();
+    //     digitalWrite(PIN_PULL_SENSE_LOW, false);
+    //     delay(1000);
+    //     wdt_reset();
+    //     digitalWrite(PIN_PULL_SENSE_LOW, true);
+    // }
     // TODO: Detect boot reason.
 
     // Start up buzzer noise.

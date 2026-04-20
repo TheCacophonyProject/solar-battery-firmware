@@ -1,6 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include "log_codes.h"
 #include <Arduino.h>
 
 void setupPIT();
@@ -26,6 +27,12 @@ inline void logCodeI16(uint8_t code, int16_t val) {
     Serial.write(code);
     Serial.write((uint8_t *)&val, 2);
 }
+inline void logCodeU8U8(uint8_t code, uint8_t a, uint8_t b) {
+    Serial.write(code);
+    Serial.write(a);
+    Serial.write(b);
+}
+inline void debug(uint8_t id, uint8_t value) { logCodeU8U8(LOG_DEBUG, id, value); }
 // payload: u8 a, u16 b, u16 c
 inline void logCodeU8U16U16(uint8_t code, uint8_t a, uint16_t b, uint16_t c) {
     Serial.write(code);
@@ -37,11 +44,6 @@ inline void logCodeU8U16U16(uint8_t code, uint8_t a, uint16_t b, uint16_t c) {
 inline void logCodeU8(uint8_t code, uint8_t a) {
     Serial.write(code);
     Serial.write(a);
-}
-inline void logCodeU8U8(uint8_t code, uint8_t a, uint8_t b) {
-    Serial.write(code);
-    Serial.write(a);
-    Serial.write(b);
 }
 // payload: i16 a, u16 b
 inline void logCodeI16U16(uint8_t code, int16_t a, uint16_t b) {
@@ -65,6 +67,8 @@ inline void logCode3I16(uint8_t code, int16_t a, int16_t b, int16_t c) {
 inline void logCode(uint8_t) {}
 inline void logCodeU16(uint8_t, uint16_t) {}
 inline void logCodeI16(uint8_t, int16_t) {}
+inline void logCodeU8U8(uint8_t, uint8_t, uint8_t) {}
+inline void debug(uint8_t, uint8_t) {}
 inline void logCodeU8U16U16(uint8_t, uint8_t, uint16_t, uint16_t) {}
 inline void logCodeU8(uint8_t, uint8_t) {}
 inline void logCodeU8U8(uint8_t, uint8_t, uint8_t) {}
