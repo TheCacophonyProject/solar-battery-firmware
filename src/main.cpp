@@ -70,7 +70,9 @@ void setup() {
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
-    // PIN_PULL_SENSE_LOW (PC3) direction is set by the CCL setup below — do not pinMode() here.
+    pinMode(PIN_PULL_SENSE_LOW, INPUT); // This pin is not actually used anymore and we are instead using PC1 as that
+                                        // can be connected to the CCL LUT1 output. The output of PC1 is now wired to
+                                        // PC3 so setting as high impedance to avoid pulling up/down.
 
     // Set pin initial states
     ledOff();
@@ -79,34 +81,25 @@ void setup() {
 #if SERIAL_ENABLE
     Serial.begin(9600);
 
-    // // Mirror inverted UART TX (PB2) onto PC3 using CCL LUT1.
-    // // USART0 TXD is only available on INSEL1 (0xA); INSEL0 0xA gives XCK instead.
-    // // Truth table 0x01 = NOT(IN1): indices 0 (IN1=0) and 2 (IN1=1) are the only
-    // // reachable entries since IN0 and IN2 are masked.
-    // // CCL config registers are enable-protected: must disable CCL before writing them.
-    // CCL.CTRLA = 0;                        // Disable CCL globally before configuring
-    // CCL.LUT1CTRLA = 0;                    // Disable LUT1 before configuring
-    // PORTMUX.CTRLA &= ~(1 << 5);           // LUT1 output → PC3 (default, bit5=0; bit5=1 would be alternative pin)
-    // PORTC.DIR |= PIN3_bm;                 // Set PC3 as output (required for CCL LUT1 to drive the pin)
-    // CCL.LUT1CTRLB = CCL_INSEL1_USART0_gc; // Set IN1 to USART0 TXD. So when TX is HIGH, IN1 is True. IN0 = MASK
-    // CCL.LUT1CTRLC = 0;                    // IN2 = MASK
-    // CCL.TRUTH1 = 0xFF;                    // DEBUG: always HIGH to verify CCL is driving pin
-    // CCL.LUT1CTRLA = CCL_OUTEN_bm | CCL_ENABLE_bm; // Enable LUT1 and output to Pin
-    // CCL.CTRLA = CCL_ENABLE_bm;            // Enable CCL
-
-    // debug(0xE0, CCL.CTRLA);
-    // debug(0xE1, CCL.LUT1CTRLA);
-    // debug(0xE2, CCL.LUT1CTRLB);
-    // debug(0xE3, CCL.TRUTH1);
-    // debug(0xE4, PORTMUX.CTRLA);
-    // debug(0xE5, PORTC.DIR);        // Expect bit3 set (0x08)
-    // debug(0xE6, PORTC.PIN3CTRL);   // Expect 0x00 — bit0=INVEN, if set it inverts the output
-
-    // while (true) {
-    //     logCode(LOG_MAIN_STARTING);
-    //     delay(1000);
-    //     wdt_reset();
-    // }
+    // Mirror inverted UART TX onto PC1 using CCL LUT1.
+    // LUT1 output pin options: PA7 (default) or PC1 (alternative, PORTMUX.CTRLA bit5=1).
+    // PA7 is already used as PIN_TS1, so we use the alternative PC1.
+    // USART0 TXD is only available on INSEL1 (0xA); INSEL0 0xA gives XCK instead.
+    // TRUTH1 = 0x01 = NOT(IN1): IN1=0 (TX low) → output HIGH, IN1=1 (TX high) → output LOW.
+    // IN0 and IN2 are masked (tied low), so only rows 0 and 2 of the truth table are reachable.
+    CCL.CTRLA = 0;     // Disable CCL peripheral (section 28.5.1: ENABLE bit)
+    CCL.LUT1CTRLA = 0; // Disable LUT1; required before writing enable-protected registers (section 28.3.1, 28.5.3)
+    PORTMUX.CTRLA |= (1 << 5); // LUT1 output to alternative pin PC1 (section 15.3.1)
+    PORTC.DIR |= PIN1_bm;      // Set PC1 as output direction (section 16.5.1: DIR register); OUTEN overrides PORT I/O
+                               // controller anyway (section 28.5.3: OUTEN bit description)
+    CCL.LUT1CTRLB =
+        CCL_INSEL1_USART0_gc; // INSEL1[3:0]=0xA: USART0 TXD; INSEL0[3:0]=0x0: MASK (section 28.5.4, Table 5-1)
+    CCL.LUT1CTRLC = 0;        // INSEL2[3:0]=0x0: MASK (section 28.5.5)
+    CCL.TRUTH1 = 0x01; // We want to match when IN[2-0] are all 0, so that means just TRUTH[0] is True, meaning register
+                       // value of 0x01 (section 28.3.2.2, Table 28-2)
+    CCL.LUT1CTRLA =
+        CCL_OUTEN_bm | CCL_ENABLE_bm; // OUTEN (bit 3): drive PC1 from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
+    CCL.CTRLA = CCL_ENABLE_bm;        // Enable CCL peripheral (section 28.3.2.1)
 
 #endif
 
