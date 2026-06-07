@@ -70,9 +70,22 @@ void setup() {
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
-    pinMode(PIN_PULL_SENSE_LOW, INPUT); // This pin is not actually used anymore and we are instead using PC1 as that
-                                        // can be connected to the CCL LUT1 output. The output of PC1 is now wired to
-                                        // PC3 so setting as high impedance to avoid pulling up/down.
+
+    // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW and PC1 are wired
+    // together. If we don't do this we risk having shorting PC1 to ground through PIN_PULL_SENSE_LOW. To do this we
+    // will set PIN_PULL_SENSE_LOW as INPUT_PULLIP and drive PC1 LOW. If PIN_PULL_SENSE_LOW is LOW then we know they are
+    // connected and we will set PIN_PULL_SENSE_LOW as INPUT, no pullup. If PIN_PULL_SENSE_LOW is HIGH then we know they
+    // are not connected and we will set PIN_PULL_SENSE_LOW to LOW to disable the MOSFET that drives the sense low.
+    pinMode(PIN_PULL_SENSE_LOW, INPUT_PULLUP);
+    pinMode(PIN_PC1, OUTPUT);
+    digitalWrite(PIN_PC1, LOW);
+    delayMicroseconds(10);
+    if (digitalRead(PIN_PULL_SENSE_LOW) == LOW) {
+        pinMode(PIN_PULL_SENSE_LOW, INPUT);
+    } else {
+        pinMode(PIN_PULL_SENSE_LOW, OUTPUT);
+        digitalWrite(PIN_PULL_SENSE_LOW, LOW);
+    }
 
     // Set pin initial states
     ledOff();
