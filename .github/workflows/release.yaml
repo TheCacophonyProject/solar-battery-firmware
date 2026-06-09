@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: 
+      - '**'
+    tags:
+      - '*'
+  pull_request:
+    branches: 
+      - '**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Cache PlatformIO and pip
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: ${{ runner.os }}-platformio-${{ hashFiles('**/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install dependencies
+        run: |
+          pip install urllib3==1.26.15
+          pip install -U platformio
+          pio pkg update
+
+      - name: Build project
+        run: |
+          pio --version
+          pio run
+
+      - name: Generate SHA256 checksum
+        run: |
+          sha256sum .pio/build/ATtiny1616/firmware.hex | cut -d ' ' -f 1 > .pio/build/ATtiny1616/firmware.hex.sha256
+
+      - name: Upload release assets
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: |
+            .pio/build/ATtiny1616/firmware.hex
+            .pio/build/ATtiny1616/firmware.hex.sha256
+          allowUpdates: true
