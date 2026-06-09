@@ -36,8 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install urllib3==1.26.15
-          pip install -U platformio
-          pio pkg update
+          pip install platformio==6.1.19
 
       - name: Build project
         run: |
