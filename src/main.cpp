@@ -211,7 +211,7 @@ void setup() {
     logCode3I16(LOG_MAIN_TEMPS, int16_t(ahtTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
     float tMin = min(ahtTemp, min(balancerTemp, chargerTemp));
     float tMax = max(ahtTemp, max(balancerTemp, chargerTemp));
-    if (tMin < 15.0f || tMax > 40.0f) {
+    if (tMin < 0.0f || tMax > 45.0f) {
         logCode(LOG_MAIN_TEMP_OOR);
         waitUntilNextBeep();
         restart();
