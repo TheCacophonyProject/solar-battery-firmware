@@ -6,24 +6,33 @@
 #include "bq76920.h"
 #include <Arduino.h>
 
+// Discharging temperature limits are a bit different to charging.
+// We need to reduce discharging when below 0C and then completely stop discharging when below -10C.
+#define REDUCE_DISCHARGE_TEMP 0
+#define STOP_DISCHARGE_TEMP -10
+
+// Because we charge at most 0.5C we just need to stop charging when temperature is too high or too low.
+// Set Charging limits following the JEITA standard.
 //    ^
 //    |-- No charging allowed. Too cold.
 //    |
-#define TEMPERATURE_POINT_1 0
+#define JEITA_T0 0
 //    |
-//    |-- Reduced charging/discharging current.
+//    |-- Reduced charging current to 0.5C. With at least 2 cells populated at 2500mAh that gives a max charging current
+//    of 2.5A. That is already the maximum charge current we support so nothing needs to be done here.
 //    |
-#define TEMPERATURE_POINT_2 10
+#define JEITA_T1 10
 //    |
 //    |-- Normal operating conditions.
 //    |
-#define TEMPERATURE_POINT_3 50
+#define JEITA_T3 50
 //    |
-//    |-- Reduced charging/discharging current.
+//    |-- Reduced charging current to 0.5C. With at least 2 cells populated at 2500mAh that gives a max charging current
+//    of 2.5A. That is already the maximum charge current we support so nothing needs to be done here.
 //    |
-#define TEMPERATURE_POINT_5 60
+#define JEITA_T5 60
 //    |
-//    |-- No charging allowed. Too hot.
+//    |-- No charging/discharging allowed. Too hot.
 //    V
 
 // Humidity threshold above which charging and discharging are disabled.
@@ -37,15 +46,14 @@ class ProtectionState {
     bool isChargingEnabled();
     bool isBalancingEnabled();
     uint8_t getStateFlags() const {
-        return (healthy          ? 0x01 : 0)
-             | (chargeEnabled    ? 0x02 : 0)
-             | (dischargeEnabled ? 0x04 : 0)
-             | (balancingEnabled ? 0x08 : 0);
+        return (healthy ? 0x01 : 0) | (chargeEnabled ? 0x02 : 0) | (dischargeEnabled ? 0x04 : 0) |
+               (balancingEnabled ? 0x08 : 0);
     }
 
   private:
     bool cellUnderVoltageProtection = false;
     bool ocdScdProtection = false;
+    bool lowTempDischarge = false;
     bool chargeEnabled = true; // If false then the charge MOSFET controlled by the BQ76920 should be disabled and the
                                // BQ25798 should disable charging.
     bool dischargeEnabled = true; // If false then the discharge MOSFET controlled by the BQ76920 should be disabled.

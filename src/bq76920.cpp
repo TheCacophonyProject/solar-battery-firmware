@@ -528,6 +528,18 @@ void BQ76920::clearOCDSCDFault() { writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_
 // Call only after uvCellRecovered() returns true (all cells > CELL_UV_RECOVERY).
 void BQ76920::clearUVFault() { writeReg(BQ76920_REG00_SYS_STAT, BQ76920_SYS_STAT_UV); }
 
+void BQ76920::lowTempDischargeProtection(bool lowTemp) {
+    if (lowTemp == lowTempOcdActive) {
+        return;
+    }
+    lowTempOcdActive = lowTemp;
+    uint8_t threshold = lowTemp ? PROTECT_OCD_THRESHOLD_LOW_TEMP : PROTECT_OCD_THRESHOLD;
+    uint8_t protect2 = (PROTECT_OCD_DELAY << 4) | threshold;
+    if (!writeReg(BQ76920_REG07_PROTECT2, protect2)) {
+        logCode(LOG_BQ_PROT2_ERR);
+    }
+}
+
 void BQ76920::shipMode() {
     stopCellBalancing();
     writeReg(BQ76920_REG04_SYS_CTRL1, 0x00);

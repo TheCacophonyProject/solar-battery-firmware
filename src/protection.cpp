@@ -74,35 +74,43 @@ void ProtectionState::update() {
         break;
     }
 
-    // Checking BQ76920 external temperature sensor.
+    // Checking Battery temperatures.
+    bool chargerWasSleeping = charger.isSleeping();
     float temp1 = balancer.readTemp();
     logCodeI16(LOG_PROT_BQ76920_TEMP, int16_t(temp1 * 10));
-    if (temp1 <= TEMPERATURE_POINT_1 || temp1 >= TEMPERATURE_POINT_5) {
+    float temp2 = charger.readTemp();
+    logCodeI16(LOG_PROT_CHARGER_TEMP, int16_t(temp2 * 10));
+    float cellMinTemp = min(temp1, temp2);
+    float cellMaxTemp = max(temp1, temp2);
+
+    // If the charger was in sleep mode then put it back in sleep mode.
+    if (chargerWasSleeping) {
+        charger.sleepMode();
+    }
+
+    if (cellMinTemp <= JEITA_T0) {
+        // Cell temperature too low. Disable charging.
+        newChargeEnabled = false;
+    }
+
+    if (cellMaxTemp >= JEITA_T5) {
+        // Cell temperature too high. Disable charging, discharging and balancing.
         newChargeEnabled = false;
         newDischargeEnabled = false;
         newBalancingEnabled = false;
     }
 
-    // Before doing charger checks we will check if it is in sleep mode.
-    bool chargerWasSleeping = charger.isSleeping();
+    // Set if the temperature is low enough to require slower discharging.
+    balancer.lowTempDischargeProtection(cellMinTemp <= REDUCE_DISCHARGE_TEMP);
 
-    // Check the temperature sensor connected to the charger
-    float temp2 = charger.readTemp();
-    logCodeI16(LOG_PROT_CHARGER_TEMP, int16_t(temp2 * 10));
-    if (temp2 <= TEMPERATURE_POINT_1 || temp2 >= TEMPERATURE_POINT_5) {
-        newChargeEnabled = false;
+    if (cellMinTemp <= STOP_DISCHARGE_TEMP) {
+        // Cell temperature too low. Disable discharging.
         newDischargeEnabled = false;
-        newBalancingEnabled = false;
     }
 
     if (charger.vbatOvpStat()) {
         logCode(LOG_PROT_VBAT_OVP);
         newChargeEnabled = false;
-    }
-
-    // If the charger was in sleep mode then put it back in sleep mode.
-    if (chargerWasSleeping) {
-        charger.sleepMode();
     }
 
     // Checking AHT20 humidity. High humidity risks condensation inside the pack.

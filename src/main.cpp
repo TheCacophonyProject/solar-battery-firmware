@@ -3,12 +3,12 @@
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 #include <avr/wdt.h>
-#include <main.h>
 
 #include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
 #include "log_codes.h"
+#include "main.h"
 #include "protection.h"
 #include "util.h"
 

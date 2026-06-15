@@ -57,7 +57,8 @@
 // OCD threshold (RSNS=0): 0x0=8mV, 0x1=11mV, 0x2=14mV, 0x3=17mV, 0x4=19mV,
 //                          0x5=22mV, 0x6=25mV, 0x7=28mV, 0x8=31mV, 0x9=33mV,
 //                          0xA=36mV, 0xB=39mV, 0xC=42mV, 0xD=44mV, 0xE=47mV, 0xF=50mV
-#define PROTECT_OCD_THRESHOLD 0x2 // 14mV → 1.4A with 10mΩ sense resistor
+#define PROTECT_OCD_THRESHOLD 0x9          // 33mV → 2.2A with 15mΩ sense resistor
+#define PROTECT_OCD_THRESHOLD_LOW_TEMP 0x0 // 8mV → 0.53A with 15mΩ sense resistor
 
 // UV delay: 0x0=1s, 0x1=4s, 0x2=8s, 0x3=16s
 #define PROTECT_UV_DELAY 0x0 // 1s
@@ -148,6 +149,7 @@ class BQ76920 {
     bool isLoadPresent();
     void clearOCDSCDFault();
     void clearUVFault();
+    void lowTempDischargeProtection(bool lowTemp);
 
   private:
     uint16_t calculateADC(uint8_t msb, uint8_t lsb);
@@ -171,6 +173,7 @@ class BQ76920 {
     uint16_t cellOVMilliVoltage = 0;
     uint16_t cellUVMilliVoltage = 0;
     bool balancing = false;
+    bool lowTempOcdActive = false;
 };
 
 #endif
