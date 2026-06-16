@@ -8,6 +8,7 @@
 #include "bq25798.h"
 #include "bq76920.h"
 #include "log_codes.h"
+#include "m24c02.h"
 #include "main.h"
 #include "protection.h"
 #include "util.h"
@@ -17,6 +18,7 @@
 BQ25798 charger;
 BQ76920 balancer;
 AHT20 tempHumidity;
+M24C02 eeprom;
 ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidity);
 
 #define PIN_LED PIN_PB5
@@ -133,6 +135,20 @@ void setup() {
 
     // Setup i2C
     Wire.begin();
+
+    // Read PCB version from EEPROM and verify compatibility.
+    if (!eeprom.begin()) {
+        logCode(LOG_MAIN_EEPROM_NOT_FOUND);
+        restart();
+    }
+    logCode(LOG_MAIN_EEPROM_FOUND);
+    PcbVersion pcbVersion = {};
+    eeprom.readPcbVersion(&pcbVersion);
+    logCodeBytes(LOG_MAIN_PCB_VERSION, (uint8_t *)&pcbVersion, 3);
+    if (!eeprom.isCompatible(pcbVersion)) {
+        logCodeBytes(LOG_MAIN_PCB_INCOMPAT, (uint8_t *)&pcbVersion, 3);
+        restart();
+    }
 
     // Try to find the BQ25798 (MPPT charger)
     if (!charger.begin(PIN_CE)) {

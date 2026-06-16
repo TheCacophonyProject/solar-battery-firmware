@@ -29,6 +29,10 @@
 #define LOG_MAIN_RESTARTING         0x11  // Software restart
 #define LOG_MAIN_CHARGER_INT        0x12  // Charger interrupt fired
 #define LOG_MAIN_BALANCER_INT       0x13  // Balancer interrupt fired
+#define LOG_MAIN_EEPROM_FOUND       0x14  // M24C02 EEPROM found
+#define LOG_MAIN_EEPROM_NOT_FOUND   0x15  // M24C02 EEPROM not found
+#define LOG_MAIN_PCB_VERSION        0x16  // PCB version read;           payload: u8 major, u8 minor, u8 patch
+#define LOG_MAIN_PCB_INCOMPAT       0x17  // PCB version incompatible;   payload: u8 major, u8 minor, u8 patch
 
 // ── Protection (0x20–0x2F) ───────────────────────────────────────────────────
 #define LOG_PROT_UV_RECOVERED   0x20  // Cell UV recovered
