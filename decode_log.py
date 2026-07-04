@@ -13,11 +13,18 @@ Usage:
     baud  - baud rate,     default 9600
     csv   - output CSV file, default battery_YYYYMMDD_HHMMSS.csv
 
-    --gpio PIN  use a GPIO pin for bit-bang UART RX instead of a serial port
-                (requires pigpio: pip3 install pigpio; sudo pigpiod)
+    --gpio PIN  use a GPIO pin (BCM numbering) for bit-bang UART RX instead of a
+                serial port. Wire the ATtiny TX to that pin (through a level
+                shifter / divider if it is a 5 V signal — the Pi's GPIO is 3.3 V).
+                Requires the pigpio daemon: sudo pigpiod
 
 Install dependencies:
-    pip3 install pyserial pigpio
+    Real UART:  pip3 install pyserial
+    GPIO mode:  pip3 install pigpio     (pyserial not needed)
+
+Examples (on a Raspberry Pi, ATtiny TX on GPIO15 / physical pin 10):
+    sudo pigpiod
+    python3 decode_log.py --gpio 15 --baud 9600
 """
 
 import csv
@@ -26,7 +33,10 @@ import struct
 import sys
 import time
 
-import serial
+try:
+    import serial  # pyserial — only needed for a real UART device, not GPIO mode
+except ImportError:
+    serial = None
 
 
 class GPIOSerial:
@@ -283,7 +293,14 @@ def run(port, baud, csv_path=None, gpio_pin=None):
     with open(csv_path, "w", newline="") as csv_file:
         csv_writer = csv.writer(csv_file)
         csv_writer.writerow(CSV_HEADER)
-        ser_ctx = GPIOSerial(gpio_pin, baud) if gpio_pin is not None else serial.Serial(port, baud, timeout=2)
+        if gpio_pin is not None:
+            ser_ctx = GPIOSerial(gpio_pin, baud)
+        elif serial is None:
+            raise RuntimeError(
+                "pyserial not installed. Install it (pip3 install pyserial) "
+                "or use --gpio PIN for bit-bang UART on a GPIO pin.")
+        else:
+            ser_ctx = serial.Serial(port, baud, timeout=2)
         with ser_ctx as ser:
             print("Listening. Press Ctrl-C to stop.\n")
             cell_idx = 0
@@ -396,10 +413,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     _baud = args.baud_flag if args.baud_flag is not None else args.baud
+    # _serial_error = serial.SerialException if serial is not None else ()
     try:
         run(args.port, _baud, args.csv, gpio_pin=args.gpio)
     except KeyboardInterrupt:
         print("\nStopped.")
-    except serial.SerialException as e:
-        print(f"Serial error: {e}", file=sys.stderr)
+    # except _serial_error as e:
+    #     print(f"Serial error: {e}", file=sys.stderr)
+    #     sys.exit(1)
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
         sys.exit(1)

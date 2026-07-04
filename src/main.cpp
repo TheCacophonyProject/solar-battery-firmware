@@ -367,22 +367,33 @@ void loop() {
         uint8_t bqStat[4] = {};
         balancer.readStatusRegs(bqStat);
 
+        // Assemble the 36-byte payload contiguously so it can be CRC'd, then
+        // send: LOG_STATUS, payload, CRC-16 (little-endian). The Go reader
+        // (battery_serial.go) verifies the CRC and drops corrupt/misframed
+        // messages.
+        uint8_t payload[36];
+        size_t o = 0;
+        memcpy(payload + o, &seconds, 4);            o += 4;
+        memcpy(payload + o, &tempAht, 2);            o += 2;
+        memcpy(payload + o, &tempBq76920, 2);        o += 2;
+        memcpy(payload + o, &tempBq25798, 2);        o += 2;
+        payload[o++] = humPct;
+        memcpy(payload + o, &cellMv[0], 2);          o += 2;
+        memcpy(payload + o, &cellMv[1], 2);          o += 2;
+        memcpy(payload + o, &cellMv[2], 2);          o += 2;
+        memcpy(payload + o, &chargerADC.vbus_mv, 2); o += 2;
+        memcpy(payload + o, &chargerADC.ibus_ma, 2); o += 2;
+        memcpy(payload + o, &chargerADC.vbat_mv, 2); o += 2;
+        memcpy(payload + o, &chargerADC.ibat_ma, 2); o += 2;
+        memcpy(payload + o, &ibat_cc_ma, 2);         o += 2; // BQ76920 CC current
+        memcpy(payload + o, chgStat, 5);             o += 5; // REG1B..1F
+        memcpy(payload + o, bqStat, 4);              o += 4; // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+
+        uint16_t crc = crc16CCITT(payload, sizeof(payload));
+
         Serial.write(LOG_STATUS);
-        Serial.write((uint8_t *)&seconds, 4);
-        Serial.write((uint8_t *)&tempAht, 2);
-        Serial.write((uint8_t *)&tempBq76920, 2);
-        Serial.write((uint8_t *)&tempBq25798, 2);
-        Serial.write(humPct);
-        Serial.write((uint8_t *)&cellMv[0], 2);
-        Serial.write((uint8_t *)&cellMv[1], 2);
-        Serial.write((uint8_t *)&cellMv[2], 2);
-        Serial.write((uint8_t *)&chargerADC.vbus_mv, 2);
-        Serial.write((uint8_t *)&chargerADC.ibus_ma, 2);
-        Serial.write((uint8_t *)&chargerADC.vbat_mv, 2);
-        Serial.write((uint8_t *)&chargerADC.ibat_ma, 2);
-        Serial.write((uint8_t *)&ibat_cc_ma, 2); // BQ76920 CC current
-        Serial.write(chgStat, 5);                // REG1B..1F
-        Serial.write(bqStat, 4);                 // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+        Serial.write(payload, sizeof(payload));
+        Serial.write((uint8_t *)&crc, 2);
     }
 #endif
 
