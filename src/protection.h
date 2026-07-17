@@ -6,6 +6,8 @@
 #include "bq76920.h"
 #include <Arduino.h>
 
+#define PIN_EN_HEATER PIN_PC0 // Pin used to turn on the internal trace heater
+
 // Discharging temperature limits are a bit different to charging.
 // We need to reduce discharging when below 0C and then completely stop discharging when below -10C.
 #define REDUCE_DISCHARGE_TEMP 0
@@ -57,6 +59,7 @@ class ProtectionState {
                                // BQ25798 should disable charging.
     bool dischargeEnabled = true; // If false then the discharge MOSFET controlled by the BQ76920 should be disabled.
     bool balancingEnabled = true; // If false then the balancing from the BQ76920 should be disabled.
+    bool heatingEnabled = false;
 
     // TODO: uint16_t maxChargeCurrent = 2000;   // This should set the maximum charge current from the BQ25798.
     bool healthy = true; // If any of the states are changed from the default

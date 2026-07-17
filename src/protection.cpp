@@ -17,6 +17,7 @@ void ProtectionState::update() {
     bool newChargeEnabled = true;
     bool newDischargeEnabled = true;
     bool newBalancingEnabled = true;
+    bool newHeatingEnabled = false;
 
     // Check if we have recovered from a cell under voltage.
     // This has some hysteresis to prevent cells close to under voltage turning
@@ -89,8 +90,14 @@ void ProtectionState::update() {
     }
 
     if (cellMinTemp <= JEITA_T0) {
-        // Cell temperature too low. Disable charging.
+        // Cell temperature too low. Disable charging and enable heating.
+        newHeatingEnabled = true;
         newChargeEnabled = false;
+    }
+
+    // Heater hysteresis.
+    if (heatingEnabled && cellMinTemp <= JEITA_T0 + 1) {
+        newHeatingEnabled = true;
     }
 
     if (cellMaxTemp >= JEITA_T5) {
@@ -98,6 +105,7 @@ void ProtectionState::update() {
         newChargeEnabled = false;
         newDischargeEnabled = false;
         newBalancingEnabled = false;
+        newHeatingEnabled = false;
     }
 
     // Set if the temperature is low enough to require slower discharging.
@@ -130,9 +138,9 @@ void ProtectionState::update() {
 
     // Log the new state if anything changed.
     if (newHealthy != healthy || newChargeEnabled != chargeEnabled || newDischargeEnabled != dischargeEnabled ||
-        newBalancingEnabled != balancingEnabled) {
+        newBalancingEnabled != balancingEnabled || newHeatingEnabled != heatingEnabled) {
         uint8_t flags = (newHealthy ? 0x01 : 0) | (newChargeEnabled ? 0x02 : 0) | (newDischargeEnabled ? 0x04 : 0) |
-                        (newBalancingEnabled ? 0x08 : 0);
+                        (newBalancingEnabled ? 0x08 : 0) | (newHeatingEnabled ? 0x10 : 0);
         logCodeU8(LOG_PROT_STATE, flags);
     }
 
@@ -141,6 +149,7 @@ void ProtectionState::update() {
     chargeEnabled = newChargeEnabled;
     dischargeEnabled = newDischargeEnabled;
     balancingEnabled = newBalancingEnabled;
+    heatingEnabled = newHeatingEnabled;
 
     // Apply the protections.
     if (balancingEnabled == false) {
@@ -159,5 +168,11 @@ void ProtectionState::update() {
         balancer.enableDischarging();
     } else {
         balancer.disableDischarging();
+    }
+
+    if (heatingEnabled) {
+        digitalWrite(PIN_EN_HEATER, HIGH);
+    } else {
+        digitalWrite(PIN_EN_HEATER, LOW);
     }
 }

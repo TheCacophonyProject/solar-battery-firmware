@@ -28,6 +28,7 @@ ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidit
 #define PIN_CE PIN_PA5                 // BQ25798 ~Charge Enable
 #define PIN_PULL_SENSE_LOW_OLD PIN_PC3 // Pin used on some older PCBs for pulling sense low
 #define PIN_PIN_PULL_SENSE_LOW PIN_PC1 // Pin use on newer PCBs for pulling sense low
+#define PIN_EN_HEATER PIN_PC0          // Pin used to turn on the internal trace heater
 
 uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
@@ -73,6 +74,8 @@ void setup() {
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
+    pinMode(PIN_EN_HEATER, OUTPUT);
+    digitalWrite(PIN_EN_HEATER, LOW);
 
     // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW_OLD and
     // PIN_PULL_SENSE_LOW are wired together. If we don't do this we risk having shorting PIN_PULL_SENSE_LOW to ground

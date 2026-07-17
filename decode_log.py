@@ -247,7 +247,8 @@ def fmt_payload(fields, values):
             parts.append(f"healthy={'Y' if val & 0x01 else 'N'}  "
                          f"chg={'Y' if val & 0x02 else 'N'}  "
                          f"discharge={'Y' if val & 0x04 else 'N'}  "
-                         f"bal={'Y' if val & 0x08 else 'N'}")
+                         f"bal={'Y' if val & 0x08 else 'N'}  "
+                         f"heat={'Y' if val & 0x10 else 'N'}")
         elif name == "seconds":
             parts.append(f"t={val}s")
         elif name.endswith("_mv"):
