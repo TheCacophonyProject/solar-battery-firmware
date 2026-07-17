@@ -22,11 +22,12 @@ M24C02 eeprom;
 ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidity);
 
 #define PIN_LED PIN_PB5
-#define PIN_TS1 PIN_PA7       // BQ76920 TS1
-#define PIN_ALERT PIN_PA6     // BQ76920 ALERT
-#define PIN_INTERRUPT PIN_PA2 // BQ25798 Interrupt
-#define PIN_CE PIN_PA5        // BQ25798 ~Charge Enable
-#define PIN_PULL_SENSE_LOW PIN_PC3
+#define PIN_TS1 PIN_PA7                // BQ76920 TS1
+#define PIN_ALERT PIN_PA6              // BQ76920 ALERT
+#define PIN_INTERRUPT PIN_PA2          // BQ25798 Interrupt
+#define PIN_CE PIN_PA5                 // BQ25798 ~Charge Enable
+#define PIN_PULL_SENSE_LOW_OLD PIN_PC3 // Pin used on some older PCBs for pulling sense low
+#define PIN_PIN_PULL_SENSE_LOW PIN_PC1 // Pin use on newer PCBs for pulling sense low
 
 uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last
                       // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
@@ -73,20 +74,21 @@ void setup() {
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
 
-    // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW and PC1 are wired
-    // together. If we don't do this we risk having shorting PC1 to ground through PIN_PULL_SENSE_LOW. To do this we
-    // will set PIN_PULL_SENSE_LOW as INPUT_PULLIP and drive PC1 LOW. If PIN_PULL_SENSE_LOW is LOW then we know they are
-    // connected and we will set PIN_PULL_SENSE_LOW as INPUT, no pullup. If PIN_PULL_SENSE_LOW is HIGH then we know they
-    // are not connected and we will set PIN_PULL_SENSE_LOW to LOW to disable the MOSFET that drives the sense low.
-    pinMode(PIN_PULL_SENSE_LOW, INPUT_PULLUP);
-    pinMode(PIN_PC1, OUTPUT);
-    digitalWrite(PIN_PC1, LOW);
+    // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW_OLD and
+    // PIN_PULL_SENSE_LOW are wired together. If we don't do this we risk having shorting PIN_PULL_SENSE_LOW to ground
+    // through PIN_PULL_SENSE_LOW_OLD. To do this we will set PIN_PULL_SENSE_LOW_OLD as INPUT_PULLIP and drive
+    // PIN_PULL_SENSE_LOW LOW. If PIN_PULL_SENSE_LOW_OLD is LOW then we know they are connected and we will set
+    // PIN_PULL_SENSE_LOW_OLD as INPUT, no pullup. If PIN_PULL_SENSE_LOW_OLD is HIGH then we know they are not connected
+    // and we will set PIN_PULL_SENSE_LOW_OLD to LOW to disable the MOSFET that drives the sense low.
+    pinMode(PIN_PULL_SENSE_LOW_OLD, INPUT_PULLUP);
+    pinMode(PIN_PIN_PULL_SENSE_LOW, OUTPUT);
+    digitalWrite(PIN_PIN_PULL_SENSE_LOW, LOW);
     delayMicroseconds(10);
-    if (digitalRead(PIN_PULL_SENSE_LOW) == LOW) {
-        pinMode(PIN_PULL_SENSE_LOW, INPUT);
+    if (digitalRead(PIN_PULL_SENSE_LOW_OLD) == LOW) {
+        pinMode(PIN_PULL_SENSE_LOW_OLD, INPUT);
     } else {
-        pinMode(PIN_PULL_SENSE_LOW, OUTPUT);
-        digitalWrite(PIN_PULL_SENSE_LOW, LOW);
+        pinMode(PIN_PULL_SENSE_LOW_OLD, OUTPUT);
+        digitalWrite(PIN_PULL_SENSE_LOW_OLD, LOW);
     }
 
     // Set pin initial states
@@ -96,25 +98,26 @@ void setup() {
 #if SERIAL_ENABLE
     Serial.begin(9600);
 
-    // Mirror inverted UART TX onto PC1 using CCL LUT1.
-    // LUT1 output pin options: PA7 (default) or PC1 (alternative, PORTMUX.CTRLA bit5=1).
-    // PA7 is already used as PIN_TS1, so we use the alternative PC1.
+    // Mirror inverted UART TX onto PIN_PULL_SENSE_LOW using CCL LUT1.
+    // LUT1 output pin options: PA7 (default) or PIN_PULL_SENSE_LOW (alternative, PORTMUX.CTRLA bit5=1).
+    // PA7 is already used as PIN_TS1, so we use the alternative PIN_PULL_SENSE_LOW.
     // USART0 TXD is only available on INSEL1 (0xA); INSEL0 0xA gives XCK instead.
     // TRUTH1 = 0x01 = NOT(IN1): IN1=0 (TX low) → output HIGH, IN1=1 (TX high) → output LOW.
     // IN0 and IN2 are masked (tied low), so only rows 0 and 2 of the truth table are reachable.
     CCL.CTRLA = 0;     // Disable CCL peripheral (section 28.5.1: ENABLE bit)
     CCL.LUT1CTRLA = 0; // Disable LUT1; required before writing enable-protected registers (section 28.3.1, 28.5.3)
-    PORTMUX.CTRLA |= (1 << 5); // LUT1 output to alternative pin PC1 (section 15.3.1)
-    PORTC.DIR |= PIN1_bm;      // Set PC1 as output direction (section 16.5.1: DIR register); OUTEN overrides PORT I/O
-                               // controller anyway (section 28.5.3: OUTEN bit description)
+    PORTMUX.CTRLA |= (1 << 5); // LUT1 output to alternative pin PIN_PULL_SENSE_LOW (section 15.3.1)
+    PORTC.DIR |= PIN1_bm; // Set PIN_PULL_SENSE_LOW as output direction (section 16.5.1: DIR register); OUTEN overrides
+                          // PORT I/O controller anyway (section 28.5.3: OUTEN bit description)
     CCL.LUT1CTRLB =
         CCL_INSEL1_USART0_gc; // INSEL1[3:0]=0xA: USART0 TXD; INSEL0[3:0]=0x0: MASK (section 28.5.4, Table 5-1)
     CCL.LUT1CTRLC = 0;        // INSEL2[3:0]=0x0: MASK (section 28.5.5)
     CCL.TRUTH1 = 0x01; // We want to match when IN[2-0] are all 0, so that means just TRUTH[0] is True, meaning register
                        // value of 0x01 (section 28.3.2.2, Table 28-2)
     CCL.LUT1CTRLA =
-        CCL_OUTEN_bm | CCL_ENABLE_bm; // OUTEN (bit 3): drive PC1 from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
-    CCL.CTRLA = CCL_ENABLE_bm;        // Enable CCL peripheral (section 28.3.2.1)
+        CCL_OUTEN_bm |
+        CCL_ENABLE_bm; // OUTEN (bit 3): drive PIN_PULL_SENSE_LOW from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
+    CCL.CTRLA = CCL_ENABLE_bm; // Enable CCL peripheral (section 28.3.2.1)
 
 #endif
 
@@ -122,10 +125,10 @@ void setup() {
     //     logCode(LOG_MAIN_STARTING);
     //     delay(1000);
     //     wdt_reset();
-    //     digitalWrite(PIN_PULL_SENSE_LOW, false);
+    //     digitalWrite(PIN_PULL_SENSE_LOW_OLD, false);
     //     delay(1000);
     //     wdt_reset();
-    //     digitalWrite(PIN_PULL_SENSE_LOW, true);
+    //     digitalWrite(PIN_PULL_SENSE_LOW_OLD, true);
     // }
     // TODO: Detect boot reason.
 
@@ -136,17 +139,33 @@ void setup() {
     // Setup i2C
     Wire.begin();
 
-    // Read PCB version from EEPROM and verify compatibility.
+    // Read data block from EEPROM and verify PCB compatibility.
     if (!eeprom.begin()) {
         logCode(LOG_MAIN_EEPROM_NOT_FOUND);
         restart();
     }
     logCode(LOG_MAIN_EEPROM_FOUND);
-    PcbVersion pcbVersion = {};
-    eeprom.readPcbVersion(&pcbVersion);
-    logCodeBytes(LOG_MAIN_PCB_VERSION, (uint8_t *)&pcbVersion, 3);
-    if (!eeprom.isCompatible(pcbVersion)) {
-        logCodeBytes(LOG_MAIN_PCB_INCOMPAT, (uint8_t *)&pcbVersion, 3);
+    EepromData eepromData = {};
+    switch (eeprom.readData(&eepromData)) {
+    case EEPROM_OK:
+        break;
+    case EEPROM_CRC_ERR:
+        logCode(LOG_MAIN_EEPROM_CRC_ERR);
+        restart();
+        break;
+    case EEPROM_VERSION_ERR:
+        logCodeU8(LOG_MAIN_EEPROM_BAD_VER, eepromData.version);
+        restart();
+        break;
+    default:
+        logCode(LOG_MAIN_EEPROM_NOT_FOUND);
+        restart();
+        break;
+    }
+    logCodeU16(LOG_MAIN_BATTERY_ID, eepromData.id);
+    logCodeBytes(LOG_MAIN_PCB_VERSION, (uint8_t *)&eepromData.pcb, 3);
+    if (!eeprom.isCompatible(eepromData.pcb)) {
+        logCodeBytes(LOG_MAIN_PCB_INCOMPAT, (uint8_t *)&eepromData.pcb, 3);
         restart();
     }
 
@@ -373,21 +392,35 @@ void loop() {
         // messages.
         uint8_t payload[36];
         size_t o = 0;
-        memcpy(payload + o, &seconds, 4);            o += 4;
-        memcpy(payload + o, &tempAht, 2);            o += 2;
-        memcpy(payload + o, &tempBq76920, 2);        o += 2;
-        memcpy(payload + o, &tempBq25798, 2);        o += 2;
+        memcpy(payload + o, &seconds, 4);
+        o += 4;
+        memcpy(payload + o, &tempAht, 2);
+        o += 2;
+        memcpy(payload + o, &tempBq76920, 2);
+        o += 2;
+        memcpy(payload + o, &tempBq25798, 2);
+        o += 2;
         payload[o++] = humPct;
-        memcpy(payload + o, &cellMv[0], 2);          o += 2;
-        memcpy(payload + o, &cellMv[1], 2);          o += 2;
-        memcpy(payload + o, &cellMv[2], 2);          o += 2;
-        memcpy(payload + o, &chargerADC.vbus_mv, 2); o += 2;
-        memcpy(payload + o, &chargerADC.ibus_ma, 2); o += 2;
-        memcpy(payload + o, &chargerADC.vbat_mv, 2); o += 2;
-        memcpy(payload + o, &chargerADC.ibat_ma, 2); o += 2;
-        memcpy(payload + o, &ibat_cc_ma, 2);         o += 2; // BQ76920 CC current
-        memcpy(payload + o, chgStat, 5);             o += 5; // REG1B..1F
-        memcpy(payload + o, bqStat, 4);              o += 4; // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+        memcpy(payload + o, &cellMv[0], 2);
+        o += 2;
+        memcpy(payload + o, &cellMv[1], 2);
+        o += 2;
+        memcpy(payload + o, &cellMv[2], 2);
+        o += 2;
+        memcpy(payload + o, &chargerADC.vbus_mv, 2);
+        o += 2;
+        memcpy(payload + o, &chargerADC.ibus_ma, 2);
+        o += 2;
+        memcpy(payload + o, &chargerADC.vbat_mv, 2);
+        o += 2;
+        memcpy(payload + o, &chargerADC.ibat_ma, 2);
+        o += 2;
+        memcpy(payload + o, &ibat_cc_ma, 2);
+        o += 2; // BQ76920 CC current
+        memcpy(payload + o, chgStat, 5);
+        o += 5; // REG1B..1F
+        memcpy(payload + o, bqStat, 4);
+        o += 4; // SYS_STAT,CELLBAL1,CTRL1,CTRL2
 
         uint16_t crc = crc16CCITT(payload, sizeof(payload));
 

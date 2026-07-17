@@ -33,6 +33,9 @@
 #define LOG_MAIN_EEPROM_NOT_FOUND   0x15  // M24C02 EEPROM not found
 #define LOG_MAIN_PCB_VERSION        0x16  // PCB version read;           payload: u8 major, u8 minor, u8 patch
 #define LOG_MAIN_PCB_INCOMPAT       0x17  // PCB version incompatible;   payload: u8 major, u8 minor, u8 patch
+#define LOG_MAIN_EEPROM_CRC_ERR     0x18  // EEPROM data CRC mismatch (blank or corrupt)
+#define LOG_MAIN_EEPROM_BAD_VER     0x19  // EEPROM data layout version unsupported; payload: u8 version
+#define LOG_MAIN_BATTERY_ID         0x1A  // Battery box ID from EEPROM;             payload: u16 id
 
 // ── Protection (0x20–0x2F) ───────────────────────────────────────────────────
 #define LOG_PROT_UV_RECOVERED   0x20  // Cell UV recovered
