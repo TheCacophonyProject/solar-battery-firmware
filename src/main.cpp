@@ -30,8 +30,9 @@ ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidit
 #define PIN_PIN_PULL_SENSE_LOW PIN_PC1 // Pin use on newer PCBs for pulling sense low
 #define PIN_EN_HEATER PIN_PC0          // Pin used to turn on the internal trace heater
 
-uint32_t seconds = 0; // Don't need to worry about an overflow for this as it will last
-                      // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
+uint16_t batteryId = 0; // Battery box ID read from the EEPROM at startup, sent in the status payload.
+uint32_t seconds = 0;   // Don't need to worry about an overflow for this as it will last
+                        // (2^32-1)/60/60/24/365 = 136 Years at 1 tick per second
 uint32_t lastChargerUpdateSeconds = 0;
 uint32_t lastBalancerUpdateSeconds = 0;
 uint32_t lastChargerWDTSeconds = 0;
@@ -48,9 +49,9 @@ void enableSleepMode() {
     // balancer.shipMode(); // Can't put the balancer in ship mode as that
     // disables the output.
     logCode(LOG_MAIN_SLEEP_MODE);
-#if SERIAL_ENABLE
+    // #if SERIAL_ENABLE
     Serial.flush();
-#endif
+    // #endif
     sleepModeEnabled = true;
 }
 
@@ -98,7 +99,7 @@ void setup() {
     ledOff();
 
     // Setup serial interface if enabled
-#if SERIAL_ENABLE
+    // #if SERIAL_ENABLE
     Serial.begin(9600);
 
     // Mirror inverted UART TX onto PIN_PULL_SENSE_LOW using CCL LUT1.
@@ -122,7 +123,7 @@ void setup() {
         CCL_ENABLE_bm; // OUTEN (bit 3): drive PIN_PULL_SENSE_LOW from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
     CCL.CTRLA = CCL_ENABLE_bm; // Enable CCL peripheral (section 28.3.2.1)
 
-#endif
+    // #endif
 
     // while (true) {
     //     logCode(LOG_MAIN_STARTING);
@@ -165,6 +166,7 @@ void setup() {
         restart();
         break;
     }
+    batteryId = eepromData.id;
     logCodeU16(LOG_MAIN_BATTERY_ID, eepromData.id);
     logCodeBytes(LOG_MAIN_PCB_VERSION, (uint8_t *)&eepromData.pcb, 3);
     if (!eeprom.isCompatible(eepromData.pcb)) {
@@ -365,8 +367,8 @@ void loop() {
     // throughout the loop. Here we clear them.
     charger.clearFlags();
 
-// Send periodic status snapshot every 10 seconds.
-#if SERIAL_ENABLE
+    // Send periodic status snapshot every 10 seconds.
+    // #if SERIAL_ENABLE
     if (seconds - lastStatusLogSeconds >= 10) {
         lastStatusLogSeconds = seconds;
 
@@ -389,12 +391,14 @@ void loop() {
         uint8_t bqStat[4] = {};
         balancer.readStatusRegs(bqStat);
 
-        // Assemble the 36-byte payload contiguously so it can be CRC'd, then
+        // Assemble the 38-byte payload contiguously so it can be CRC'd, then
         // send: LOG_STATUS, payload, CRC-16 (little-endian). The Go reader
         // (battery_serial.go) verifies the CRC and drops corrupt/misframed
         // messages.
-        uint8_t payload[36];
+        uint8_t payload[38];
         size_t o = 0;
+        memcpy(payload + o, &batteryId, 2);
+        o += 2;
         memcpy(payload + o, &seconds, 4);
         o += 4;
         memcpy(payload + o, &tempAht, 2);
@@ -431,12 +435,12 @@ void loop() {
         Serial.write(payload, sizeof(payload));
         Serial.write((uint8_t *)&crc, 2);
     }
-#endif
+    // #endif
 
-// Make sure we flush the serial buffer before going to sleep.
-#if SERIAL_ENABLE
+    // Make sure we flush the serial buffer before going to sleep.
+    // #if SERIAL_ENABLE
     Serial.flush();
-#endif
+    // #endif
 
     // If the next loop will run a protection check, trigger the AHT20 now so the
     // measurement completes during sleep and the result is fresh when we read it.
@@ -544,10 +548,10 @@ void mainMode() {
 }
 
 void restart() {
-#if SERIAL_ENABLE
+    // #if SERIAL_ENABLE
     logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
-#endif
+    // #endif
     waitUntilNextBeep();
     buzzer_on(500);
     delay(400);

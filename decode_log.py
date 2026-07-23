@@ -149,8 +149,8 @@ CODES = {
     0x81: ("I2C endTransmission error",        "<B",    ["err_code"]),
 
     # Periodic status ── 0x90 (handled specially in run())
-    0x90: ("Status", "<IhhhBHHHHHHhh5s4s",
-           ["seconds", "temp_aht_x10", "temp_bq76920_x10", "temp_bq25798_x10",
+    0x90: ("Status", "<HIhhhBHHHHHHhh5s4s",
+           ["battery_id", "seconds", "temp_aht_x10", "temp_bq76920_x10", "temp_bq25798_x10",
             "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
             "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
             "chg_stat", "bq_stat"]),
@@ -272,7 +272,7 @@ def fmt_payload(fields, values):
 
 
 CSV_HEADER = [
-    "wall_time", "seconds",
+    "wall_time", "battery_id", "seconds",
     "temp_aht_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
     "cell1_mv", "cell2_mv", "cell3_mv",
     "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
@@ -343,7 +343,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                 # Special case: status snapshot — print on multiple lines
                 if code == LOG_STATUS:
                     cell_idx = 0
-                    (secs, t_aht, t_bal, t_chg, hum,
+                    (battery_id, secs, t_aht, t_bal, t_chg, hum,
                      c1, c2, c3, vbus, ibus, vbat, ibat, ibat_cc,
                      chg_stat, bq_stat) = values
                     chg_a = ibat / 1000.0 if ibat > 0 else 0.0
@@ -363,7 +363,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                     if sys_stat & 0x01: bq_flags.append("OCD")
                     bal_cells = [i for i in range(5) if cellbal & (1 << i)]
 
-                    print(f"[{ts}] STATUS  t={secs}s  "
+                    print(f"[{ts}] STATUS  id={battery_id} t={secs}s  "
                           f"temp: aht={t_aht/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
                           f"hum={hum}%")
                     print(f"         cells: {c1}mV {c2}mV {c3}mV  "
@@ -376,7 +376,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                           f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
                           f"dsg={'Y' if ctrl2&0x02 else 'N'})")
                     csv_writer.writerow([
-                        ts, secs,
+                        ts, battery_id, secs,
                         f"{t_aht/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
                         c1, c2, c3,
                         vbus, ibus, vbat, ibat, ibat_cc,

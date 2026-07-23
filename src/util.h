@@ -29,7 +29,7 @@ void buzzer_pin_init();
 void start_up_buzz();
 void buzzer_beep();
 
-#define SERIAL_ENABLE true
+#define SERIAL_ENABLE false
 
 // ── Binary log helpers ────────────────────────────────────────────────────────
 // Send a one-byte code, optionally followed by a little-endian payload.
