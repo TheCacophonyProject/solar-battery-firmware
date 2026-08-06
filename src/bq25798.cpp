@@ -203,10 +203,19 @@ void BQ25798::init() {
     writeReg(BQ25798_REG16_TEMPERATURE_CONTROL, 0b01110000);
 
     // 0x17 REG17_NTC_Control_0 -- Need to program
-    // Currently we are suspending charge when it is WARM, need to review this.
-    writeReg(BQ25798_REG17_NTC_CONTROL_0, 0b00000010);
+    // Bit 7-5: JEITA high temperature range (TWARN – THOT) charge voltage setting - Set VREG to VREG-100mV (110)
+    // Bit 4-3: JEITA high temperature range (TWARN – THOT) charge current setting - 3h = ICHG unchanged (11)
+    // Bit 2-1: JEITA low temperature range (TCOLD – TCOOL) charge current setting - 2h = Set ICHG to 40%* ICHG (10)
+    // Bit 0: Reserved (0)
+    writeReg(BQ25798_REG17_NTC_CONTROL_0, 0b11011100);
 
-    // 0x18 REG18_NTC_Control_1 -- Leave as default
+    // 0x18 REG18_NTC_Control_1 -- Need to program
+    // Bit 7-6: JEITA VT2 - 0h = 71.1% (6.3°C)
+    // Bit 5-4: JEITA VT3 - 1h = 44.8% (default) (46°C)
+    // Bit 3-2: OTG mode TS HOT temperature threshold - 1h = 60°C (default)
+    // Bit   1: OTG mode TS COLD temperature threshold - 0h = -10°C (default)
+    // Bit   0: Ignore the TS feedback - 0h = NOT ignore (Default)
+    writeReg(BQ25798_REG18_NTC_CONTROL_1, 0b00010100);
 
     // 0x19 REG19_ICO_Current_Limit -- Leave as default
 
