@@ -84,20 +84,22 @@ void ProtectionState::update() {
     float cellMinTemp = min(temp1, temp2);
     float cellMaxTemp = max(temp1, temp2);
 
+    // The BQ25798 has its own hardware comparator on the TS pin that decides whether it
+    // is too cold to charge (JEITA T1 threshold, ~0C rising / ~3C falling, i.e. hysteresis
+    // is already handled in hardware). Use that directly to drive the heater instead of
+    // computing our own threshold, since it's what actually gates the charger's charging.
+    bool tsCold = charger.tsTemp() == BQ25798_TEMP::COLD;
+
     // If the charger was in sleep mode then put it back in sleep mode.
     if (chargerWasSleeping) {
         charger.sleepMode();
     }
 
-    if (cellMinTemp <= JEITA_T0) {
-        // Cell temperature too low. Disable charging and enable heating.
+    if (tsCold &&
+        cellMaxTemp <= 20) { // Add cellMax temp check to prevent false positives if something is wrong with the BQ25798
+        // Charger has determined the battery is too cold to charge. Disable charging and enable heating.
         newHeatingEnabled = true;
         newChargeEnabled = false;
-    }
-
-    // Heater hysteresis.
-    if (heatingEnabled && cellMinTemp <= JEITA_T0 + 1) {
-        newHeatingEnabled = true;
     }
 
     if (cellMaxTemp >= JEITA_T5) {

@@ -338,6 +338,30 @@ bool BQ25798::vbatOvpStat() {
     return faultStatus0 & BQ25798_VBAT_OVP_STAT;
 }
 
+// tsTemp returns the charger's own JEITA classification of the TS thermistor
+// reading (REG1F_Charger_Status_4). The TS_COLD/COOL/WARM/HOT comparators are
+// hardware, so this reflects exactly what the charger uses to decide whether
+// to allow charging, including its built-in ~3C hysteresis on the cold
+// threshold. GOOD is reported when none of the TS_*_STAT bits are set, i.e.
+// the temperature is between T2 and T3.
+BQ25798_TEMP BQ25798::tsTemp() {
+    uint8_t status4;
+    readReg(BQ25798_REG1F_CHARGER_STATUS_4, &status4);
+    if (status4 & BQ25798_TS_COLD_STAT) {
+        return BQ25798_TEMP::COLD;
+    }
+    if (status4 & BQ25798_TS_COOL_STAT) {
+        return BQ25798_TEMP::COOL;
+    }
+    if (status4 & BQ25798_TS_WARM_STAT) {
+        return BQ25798_TEMP::WARM;
+    }
+    if (status4 & BQ25798_TS_HOT_STAT) {
+        return BQ25798_TEMP::HOT;
+    }
+    return BQ25798_TEMP::GOOD;
+}
+
 void BQ25798::readFlags() {
     uint8_t flags[6] = {0};
 

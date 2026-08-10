@@ -173,6 +173,7 @@ class BQ25798 {
     bool vbatPresent();
     bool isSleeping();
     float readTemp();
+    BQ25798_TEMP tsTemp();
     void readADCAll(BQ25798ADC &out);
     bool readStatusRegs(uint8_t out[5]); // REG1B..REG1F (STATUS_0..4)
 
