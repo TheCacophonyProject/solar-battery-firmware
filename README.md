@@ -13,6 +13,8 @@
 - Run `sudo apt install pipx`
 - Run `pipx install pymcuprog`
 - Run `pipx ensurepath`
+- Run `sudo ln -s /home/$USER/.local/bin/pymcuprog /usr/local/bin/`
+- Disable terminal over UART using `sudo raspi-config`
 - At the end of `/boot/firmware/config.txt` add
 
 ``` txt

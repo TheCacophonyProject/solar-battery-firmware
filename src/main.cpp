@@ -391,11 +391,13 @@ void loop() {
         uint8_t bqStat[4] = {};
         balancer.readStatusRegs(bqStat);
 
-        // Assemble the 38-byte payload contiguously so it can be CRC'd, then
+        uint8_t heaterOn = protectionState.isHeatingEnabled() ? 1 : 0;
+
+        // Assemble the 39-byte payload contiguously so it can be CRC'd, then
         // send: LOG_STATUS, payload, CRC-16 (little-endian). The Go reader
         // (battery_serial.go) verifies the CRC and drops corrupt/misframed
         // messages.
-        uint8_t payload[38];
+        uint8_t payload[39];
         size_t o = 0;
         memcpy(payload + o, &batteryId, 2);
         o += 2;
@@ -428,6 +430,7 @@ void loop() {
         o += 5; // REG1B..1F
         memcpy(payload + o, bqStat, 4);
         o += 4; // SYS_STAT,CELLBAL1,CTRL1,CTRL2
+        payload[o++] = heaterOn;
 
         uint16_t crc = crc16CCITT(payload, sizeof(payload));
 

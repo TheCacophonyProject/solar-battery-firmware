@@ -9,6 +9,8 @@ bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
 bool ProtectionState::isBalancingEnabled() { return balancingEnabled; }
 
+bool ProtectionState::isHeatingEnabled() { return heatingEnabled; }
+
 // update will run the checks and update the protection state for the battery pack. Charger checks are skipped when the
 // charger is in sleep mode.
 void ProtectionState::update() {
