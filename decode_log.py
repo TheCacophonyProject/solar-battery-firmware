@@ -170,9 +170,9 @@ CODES = {
 
     # Periodic status ── 0x90 (handled specially in run())
     # temp_th_x10/humidity_pct come from whichever temp/humidity sensor is fitted (AHT20 or HDC2080).
-    0x90: ("Status", "<HIhhhBHHHHHHhh5s4sB",
-           ["battery_id", "seconds", "temp_th_x10", "temp_bq76920_x10", "temp_bq25798_x10",
-            "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
+    0x90: ("Status", "<BHIhhhBHHHHHHhh5s4sB",
+           ["fw_version", "battery_id", "seconds", "temp_th_x10", "temp_bq76920_x10",
+            "temp_bq25798_x10", "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
             "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
             "chg_stat", "bq_stat", "heater_on"]),
 
@@ -255,6 +255,24 @@ CHG_VBUS_STATUS = {
 }
 
 
+def crc16_ccitt(data):
+    """CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection).
+
+    Must match crc16CCITT() in the firmware (util.h) and the Go reader.
+    """
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
+
+
+def fmt_version(v):
+    """Unpack the one-byte firmware version (major*100 + minor*10 + patch)."""
+    return f"v{v // 100}.{(v // 10) % 10}.{v % 10}"
+
+
 def fmt_payload(fields, values):
     parts = []
     for name, val in zip(fields, values):
@@ -295,7 +313,7 @@ def fmt_payload(fields, values):
 
 
 CSV_HEADER = [
-    "wall_time", "battery_id", "seconds",
+    "wall_time", "battery_id", "fw_version", "seconds",
     "temp_th_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
     "cell1_mv", "cell2_mv", "cell3_mv",
     "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
@@ -366,7 +384,21 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                 # Special case: status snapshot — print on multiple lines
                 if code == LOG_STATUS:
                     cell_idx = 0
-                    (battery_id, secs, t_th, t_bal, t_chg, hum,
+                    # The firmware follows the payload with a CRC-16 (little-endian). Consume it
+                    # even on a mismatch, otherwise the two bytes get parsed as log codes.
+                    crc_raw = ser.read(2)
+                    if len(crc_raw) < 2:
+                        print(f"[{ts}] STATUS  short read on CRC "
+                              f"(got {len(crc_raw)}/2 bytes)")
+                        continue
+                    got_crc = int.from_bytes(crc_raw, "little")
+                    want_crc = crc16_ccitt(payload)
+                    if got_crc != want_crc:
+                        print(f"[{ts}] STATUS  CRC mismatch "
+                              f"(got 0x{got_crc:04X}, expected 0x{want_crc:04X}) — dropped")
+                        continue
+
+                    (fw_version, battery_id, secs, t_th, t_bal, t_chg, hum,
                      c1, c2, c3, vbus, ibus, vbat, ibat, ibat_cc,
                      chg_stat, bq_stat, heater_on) = values
                     chg_a = ibat / 1000.0 if ibat > 0 else 0.0
@@ -386,7 +418,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                     if sys_stat & 0x01: bq_flags.append("OCD")
                     bal_cells = [i for i in range(5) if cellbal & (1 << i)]
 
-                    print(f"[{ts}] STATUS  id={battery_id} t={secs}s  "
+                    print(f"[{ts}] STATUS  id={battery_id} fw={fmt_version(fw_version)} t={secs}s  "
                           f"temp: th={t_th/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
                           f"hum={hum}%")
                     print(f"         cells: {c1}mV {c2}mV {c3}mV  "
@@ -399,7 +431,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                           f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
                           f"dsg={'Y' if ctrl2&0x02 else 'N'})  heater={'ON' if heater_on else 'off'}")
                     csv_writer.writerow([
-                        ts, battery_id, secs,
+                        ts, battery_id, fmt_version(fw_version), secs,
                         f"{t_th/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
                         c1, c2, c3,
                         vbus, ibus, vbat, ibat, ibat_cc,

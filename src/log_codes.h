@@ -133,12 +133,15 @@
 #define LOG_I2C_ERR         0x81  // endTransmission error;  payload: u8 errCode
 
 // ── Periodic status snapshot (0x90) ──────────────────────────────────────────
-// Sent every 10 seconds. Payload (all little-endian, 34 bytes total):
+// Sent every 10 seconds, followed by a u16 CRC-16/CCITT-FALSE over the payload.
+// Payload (all little-endian, 40 bytes total):
+//   u8  fw_version       — Firmware version, major*100 + minor*10 + patch (see version.h)
+//   u16 battery_id       — Battery box ID from the EEPROM
 //   u32 seconds          — time since boot
-//   i16 temp_aht_x10     — AHT20 temperature  (°C × 10)
+//   i16 temp_th_x10      — Temp/humidity sensor temp (°C × 10, AHT20 or HDC2080)
 //   i16 temp_bq76920_x10 — BQ76920 NTC temp   (°C × 10)
 //   i16 temp_bq25798_x10 — BQ25798 NTC temp   (°C × 10)
-//   u8  humidity_pct     — AHT20 humidity      (whole %)
+//   u8  humidity_pct     — Relative humidity   (whole %)
 //   u16 cell1_mv         — Cell 1 voltage      (mV)
 //   u16 cell2_mv         — Cell 2 voltage      (mV)
 //   u16 cell3_mv         — Cell 3 voltage      (mV)
@@ -146,8 +149,10 @@
 //   u16 ibus_ma          — Input current        (mA)
 //   u16 vbat_mv          — Pack voltage         (mV)
 //   i16 ibat_ma          — Battery current      (mA, +ve=charging, -ve=discharging)
+//   i16 ibat_cc_ma       — BQ76920 coulomb-counter current (mA)
 //   u8[5] chg_stat       — BQ25798 REG1B..REG1F (STATUS_0..4)
 //   u8[4] bq_stat        — BQ76920 SYS_STAT, CELLBAL1, SYS_CTRL1, SYS_CTRL2
+//   u8  heater_on        — 1 if the trace heater is enabled
 #define LOG_STATUS  0x90
 
 #endif

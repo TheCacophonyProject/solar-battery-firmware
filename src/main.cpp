@@ -12,6 +12,7 @@
 #include "protection.h"
 #include "temp_humidity.h"
 #include "util.h"
+#include "version.h"
 
 #define WDT_DURATION WDTO_2S
 
@@ -392,12 +393,13 @@ void loop() {
 
         uint8_t heaterOn = protectionState.isHeatingEnabled() ? 1 : 0;
 
-        // Assemble the 39-byte payload contiguously so it can be CRC'd, then
+        // Assemble the 40-byte payload contiguously so it can be CRC'd, then
         // send: LOG_STATUS, payload, CRC-16 (little-endian). The Go reader
         // (battery_serial.go) verifies the CRC and drops corrupt/misframed
         // messages.
-        uint8_t payload[39];
+        uint8_t payload[40];
         size_t o = 0;
+        payload[o++] = FW_VERSION_BYTE; // major*100 + minor*10 + patch, see version.h
         memcpy(payload + o, &batteryId, 2);
         o += 2;
         memcpy(payload + o, &seconds, 4);
