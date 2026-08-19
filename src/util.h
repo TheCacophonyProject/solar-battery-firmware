@@ -29,68 +29,86 @@ void buzzer_pin_init();
 void start_up_buzz();
 void buzzer_beep();
 
-#define SERIAL_ENABLE false
+// DEBUGGING gates the logCode* helpers below, not Serial itself — Serial is always used (the
+// periodic status snapshot in main.cpp's loop() sends over it every 10 seconds regardless). The
+// logCode* calls are the verbose one-off/debug codes (LOG_MAIN_*, LOG_PROT_*, LOG_BQ_*, etc.),
+// which cost enough flash across all the .cpp files that enabling them everywhere doesn't fit on
+// the ATtiny1616.
+//
+// DEBUGGING is per translation unit: it defaults to off, but any .cpp file can opt in by defining
+// it before including this header, e.g. to enable logging in main.cpp only:
+//
+//   #define DEBUGGING 1
+//   #include "util.h"
+//
+// This works because the helpers below are declared `static inline`, so each .cpp file that
+// includes this header gets its own private copy rather than one shared external-linkage
+// definition — otherwise the linker would only keep one of the (possibly differing) definitions
+// across translation units, which is undefined behaviour (ODR violation).
+#ifndef DEBUGGING
+#define DEBUGGING 0
+#endif
 
 // ── Binary log helpers ────────────────────────────────────────────────────────
 // Send a one-byte code, optionally followed by a little-endian payload.
-// All functions are no-ops when SERIAL_ENABLE == 0.
-#if SERIAL_ENABLE
-inline void logCode(uint8_t code) { Serial.write(code); }
-inline void logCodeU16(uint8_t code, uint16_t val) {
+// All functions are no-ops in a file where DEBUGGING == 0.
+#if DEBUGGING
+static inline void logCode(uint8_t code) { Serial.write(code); }
+static inline void logCodeU16(uint8_t code, uint16_t val) {
     Serial.write(code);
     Serial.write((uint8_t *)&val, 2);
 }
-inline void logCodeI16(uint8_t code, int16_t val) {
+static inline void logCodeI16(uint8_t code, int16_t val) {
     Serial.write(code);
     Serial.write((uint8_t *)&val, 2);
 }
-inline void logCodeU8U8(uint8_t code, uint8_t a, uint8_t b) {
+static inline void logCodeU8U8(uint8_t code, uint8_t a, uint8_t b) {
     Serial.write(code);
     Serial.write(a);
     Serial.write(b);
 }
-inline void debug(uint8_t id, uint8_t value) { logCodeU8U8(LOG_DEBUG, id, value); }
+static inline void debug(uint8_t id, uint8_t value) { logCodeU8U8(LOG_DEBUG, id, value); }
 // payload: u8 a, u16 b, u16 c
-inline void logCodeU8U16U16(uint8_t code, uint8_t a, uint16_t b, uint16_t c) {
+static inline void logCodeU8U16U16(uint8_t code, uint8_t a, uint16_t b, uint16_t c) {
     Serial.write(code);
     Serial.write(a);
     Serial.write((uint8_t *)&b, 2);
     Serial.write((uint8_t *)&c, 2);
 }
 // payload: u8 a
-inline void logCodeU8(uint8_t code, uint8_t a) {
+static inline void logCodeU8(uint8_t code, uint8_t a) {
     Serial.write(code);
     Serial.write(a);
 }
 // payload: i16 a, u16 b
-inline void logCodeI16U16(uint8_t code, int16_t a, uint16_t b) {
+static inline void logCodeI16U16(uint8_t code, int16_t a, uint16_t b) {
     Serial.write(code);
     Serial.write((uint8_t *)&a, 2);
     Serial.write((uint8_t *)&b, 2);
 }
 // payload: N bytes
-inline void logCodeBytes(uint8_t code, const uint8_t *data, uint8_t len) {
+static inline void logCodeBytes(uint8_t code, const uint8_t *data, uint8_t len) {
     Serial.write(code);
     Serial.write(data, len);
 }
 // payload: i16 a, i16 b, i16 c
-inline void logCode3I16(uint8_t code, int16_t a, int16_t b, int16_t c) {
+static inline void logCode3I16(uint8_t code, int16_t a, int16_t b, int16_t c) {
     Serial.write(code);
     Serial.write((uint8_t *)&a, 2);
     Serial.write((uint8_t *)&b, 2);
     Serial.write((uint8_t *)&c, 2);
 }
 #else
-inline void logCode(uint8_t) {}
-inline void logCodeU16(uint8_t, uint16_t) {}
-inline void logCodeI16(uint8_t, int16_t) {}
-inline void logCodeU8U8(uint8_t, uint8_t, uint8_t) {}
-inline void debug(uint8_t, uint8_t) {}
-inline void logCodeU8U16U16(uint8_t, uint8_t, uint16_t, uint16_t) {}
-inline void logCodeU8(uint8_t, uint8_t) {}
-inline void logCodeI16U16(uint8_t, int16_t, uint16_t) {}
-inline void logCodeBytes(uint8_t, const uint8_t *, uint8_t) {}
-inline void logCode3I16(uint8_t, int16_t, int16_t, int16_t) {}
+static inline void logCode(uint8_t) {}
+static inline void logCodeU16(uint8_t, uint16_t) {}
+static inline void logCodeI16(uint8_t, int16_t) {}
+static inline void logCodeU8U8(uint8_t, uint8_t, uint8_t) {}
+static inline void debug(uint8_t, uint8_t) {}
+static inline void logCodeU8U16U16(uint8_t, uint8_t, uint16_t, uint16_t) {}
+static inline void logCodeU8(uint8_t, uint8_t) {}
+static inline void logCodeI16U16(uint8_t, int16_t, uint16_t) {}
+static inline void logCodeBytes(uint8_t, const uint8_t *, uint8_t) {}
+static inline void logCode3I16(uint8_t, int16_t, int16_t, int16_t) {}
 #endif
 
 #endif

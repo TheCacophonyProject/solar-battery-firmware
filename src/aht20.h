@@ -6,13 +6,13 @@
 
 // Datasheet: AHT20 Humidity and Temperature Sensor, ASAIR V1.0 May 2021
 
-#define AHT20_ADDR          0x38 // Fixed I2C address (section 7.3)
-#define AHT20_STATUS_REG    0x71 // Written before every read to get status/data
-#define AHT20_BUSY          (1u << 7)
-#define AHT20_CALIBRATED    (1u << 3)
-#define AHT20_READY         (0x18u) // bits 3 and 4 must both be set (section 7.4)
-#define AHT20_CMD_TRIGGER   0xAC // Trigger measurement (params: 0x33 0x00)
-#define AHT20_CMD_INIT      0xBE // Initialise calibration (params: 0x08 0x00)
+#define AHT20_ADDR 0x38       // Fixed I2C address (section 7.3)
+#define AHT20_STATUS_REG 0x71 // Written before every read to get status/data
+#define AHT20_BUSY (1u << 7)
+#define AHT20_CALIBRATED (1u << 3)
+#define AHT20_READY (0x18u)    // bits 3 and 4 must both be set (section 7.4)
+#define AHT20_CMD_TRIGGER 0xAC // Trigger measurement (params: 0x33 0x00)
+#define AHT20_CMD_INIT 0xBE    // Initialise calibration (params: 0x08 0x00)
 
 class AHT20 {
   public:
@@ -48,7 +48,7 @@ class AHT20 {
 
     I2C i2c_;
     float temperature_ = 0.0f;
-    float humidity_    = 0.0f;
+    float humidity_ = 0.0f;
 };
 
 #endif

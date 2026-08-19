@@ -49,9 +49,7 @@ void enableSleepMode() {
     // balancer.shipMode(); // Can't put the balancer in ship mode as that
     // disables the output.
     logCode(LOG_MAIN_SLEEP_MODE);
-    // #if SERIAL_ENABLE
     Serial.flush();
-    // #endif
     sleepModeEnabled = true;
 }
 
@@ -98,8 +96,8 @@ void setup() {
     // Set pin initial states
     ledOff();
 
-    // Setup serial interface if enabled
-    // #if SERIAL_ENABLE
+    // Setup serial interface. Always on: it's used for both debug log codes (gated per-file by
+    // DEBUGGING in util.h) and the periodic status snapshot in loop(), which is unconditional.
     Serial.begin(9600);
 
     // Mirror inverted UART TX onto PIN_PULL_SENSE_LOW using CCL LUT1.
@@ -122,8 +120,6 @@ void setup() {
         CCL_OUTEN_bm |
         CCL_ENABLE_bm; // OUTEN (bit 3): drive PIN_PULL_SENSE_LOW from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
     CCL.CTRLA = CCL_ENABLE_bm; // Enable CCL peripheral (section 28.3.2.1)
-
-    // #endif
 
     // while (true) {
     //     logCode(LOG_MAIN_STARTING);
@@ -372,7 +368,6 @@ void loop() {
     charger.clearFlags();
 
     // Send periodic status snapshot every 10 seconds.
-    // #if SERIAL_ENABLE
     if (seconds - lastStatusLogSeconds >= 10) {
         lastStatusLogSeconds = seconds;
 
@@ -442,12 +437,9 @@ void loop() {
         Serial.write(payload, sizeof(payload));
         Serial.write((uint8_t *)&crc, 2);
     }
-    // #endif
 
     // Make sure we flush the serial buffer before going to sleep.
-    // #if SERIAL_ENABLE
     Serial.flush();
-    // #endif
 
     // If the next loop will run a protection check, trigger the AHT20 now so the
     // measurement completes during sleep and the result is fresh when we read it.
@@ -555,10 +547,8 @@ void mainMode() {
 }
 
 void restart() {
-    // #if SERIAL_ENABLE
     logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
-    // #endif
     waitUntilNextBeep();
     buzzer_on(500);
     delay(400);

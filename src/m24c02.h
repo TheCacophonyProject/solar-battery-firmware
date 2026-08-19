@@ -3,8 +3,8 @@
 
 #include "i2c.h"
 
-#define M24C02_ADDRESS   0x50  // A2=A1=A0=0
-#define M24C02_DATA_ADDR 0x00  // EEPROM address where the data block starts
+#define M24C02_ADDRESS 0x50   // A2=A1=A0=0
+#define M24C02_DATA_ADDR 0x00 // EEPROM address where the data block starts
 
 // Layout version of the EEPROM data block this firmware understands.
 #define EEPROM_DATA_VERSION 1
