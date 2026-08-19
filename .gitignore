@@ -2,3 +2,4 @@
 .vscode
 .datasheets
 *.deb
+__pycache__

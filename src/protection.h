@@ -1,9 +1,9 @@
 #ifndef PROTECTION_H
 #define PROTECTION_H
 
-#include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
+#include "temp_humidity.h"
 #include <Arduino.h>
 
 #define PIN_EN_HEATER PIN_PC0 // Pin used to turn on the internal trace heater
@@ -42,7 +42,7 @@
 
 class ProtectionState {
   public:
-    ProtectionState(BQ25798 &charger, BQ76920 &balancer, AHT20 &aht20);
+    ProtectionState(BQ25798 &charger, BQ76920 &balancer, TempHumiditySensor &tempHumidity);
     void update();
 
     bool isChargingEnabled();
@@ -67,6 +67,6 @@ class ProtectionState {
                          // (healthy), this will be set false.
     BQ25798 &charger;
     BQ76920 &balancer;
-    AHT20 &aht20;
+    TempHumiditySensor &tempHumidity;
 };
 #endif

@@ -97,8 +97,8 @@ CODES = {
     0x05: ("BQ76920 not found",                None,    []),
     0x06: ("AHT20 found",                      None,    []),
     0x07: ("AHT20 not found",                  None,    []),
-    0x08: ("AHT20 read failed at startup",     None,    []),
-    0x09: ("Startup temps",                    "<hhh",  ["aht_c_x10", "bal_c_x10", "chg_c_x10"]),
+    0x08: ("AHT20 read failed at startup (legacy, superseded by 0x1D)", None, []),
+    0x09: ("Startup temps",                    "<hhh",  ["th_c_x10", "bal_c_x10", "chg_c_x10"]),
     0x0A: ("Startup temp out of range",        None,    []),
     0x0B: ("Startup temps disagree > 10 °C",  None,    []),
     0x0C: ("Cell population check failed",     None,    []),
@@ -109,6 +109,16 @@ CODES = {
     0x11: ("Restarting",                       None,    []),
     0x12: ("Charger interrupt fired",          None,    []),
     0x13: ("Balancer interrupt fired",         None,    []),
+    0x14: ("EEPROM found",                     None,    []),
+    0x15: ("EEPROM not found",                 None,    []),
+    0x16: ("PCB version",                      "<BBB",  ["pcb_major", "pcb_minor", "pcb_patch"]),
+    0x17: ("PCB version incompatible",         "<BBB",  ["pcb_major", "pcb_minor", "pcb_patch"]),
+    0x18: ("EEPROM CRC mismatch",              None,    []),
+    0x19: ("EEPROM data layout version unsupported", "<B", ["version"]),
+    0x1A: ("Battery ID",                       "<H",    ["battery_id"]),
+    0x1B: ("HDC2080 found",                    None,    []),
+    0x1C: ("HDC2080 not found",                None,    []),
+    0x1D: ("Temp/humidity sensor read failed at startup", None, []),
 
     # Protection ── 0x20–0x2F
     0x20: ("UV cell recovered",                None,    []),
@@ -121,7 +131,7 @@ CODES = {
     0x27: ("BQ76920 temp",                     "<h",    ["temp_c_x10"]),
     0x28: ("VBAT over voltage protection",     None,    []),
     0x29: ("BQ25798 temperature fault",        None,    []),
-    0x2A: ("AHT20 reading",                    "<hH",   ["temp_c_x10", "humidity_pct_x10"]),
+    0x2A: ("Temp/humidity reading",             "<hH",   ["temp_c_x10", "humidity_pct_x10"]),
     0x2B: ("Protection state change",          "<B",    ["state_flags"]),
     0x2C: ("BQ25798 NTC temp",                 "<h",    ["temp_c_x10"]),
 
@@ -137,6 +147,16 @@ CODES = {
     0x58: ("AHT20 measurement timeout",        None,    []),
     0x59: ("AHT20 status",                     "<B",    ["aht_status"]),
 
+    # HDC2080 ── 0xA0–0xA7
+    0xA0: ("HDC2080 manufacturer ID read failed", None,  []),
+    0xA1: ("HDC2080 manufacturer ID mismatch", "<H",     ["manuf_id"]),
+    0xA2: ("HDC2080 measurement config write failed", None, []),
+    0xA3: ("HDC2080 trigger write failed",     None,    []),
+    0xA4: ("HDC2080 readResult without trigger", None,  []),
+    0xA5: ("HDC2080 DRDY status read failed",  None,    []),
+    0xA6: ("HDC2080 busy (conversion not complete)", None, []),
+    0xA7: ("HDC2080 data register read failed", None,   []),
+
     # Util ── 0x60
     0x60: ("Buzzer frequency error",           None,    []),
     0x61: ("Debug",                            "<BB",   ["id", "value"]),
@@ -149,11 +169,12 @@ CODES = {
     0x81: ("I2C endTransmission error",        "<B",    ["err_code"]),
 
     # Periodic status ── 0x90 (handled specially in run())
-    0x90: ("Status", "<HIhhhBHHHHHHhh5s4s",
-           ["battery_id", "seconds", "temp_aht_x10", "temp_bq76920_x10", "temp_bq25798_x10",
+    # temp_th_x10/humidity_pct come from whichever temp/humidity sensor is fitted (AHT20 or HDC2080).
+    0x90: ("Status", "<HIhhhBHHHHHHhh5s4sB",
+           ["battery_id", "seconds", "temp_th_x10", "temp_bq76920_x10", "temp_bq25798_x10",
             "humidity_pct", "cell1_mv", "cell2_mv", "cell3_mv",
             "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
-            "chg_stat", "bq_stat"]),
+            "chg_stat", "bq_stat", "heater_on"]),
 
     # BQ25798 ── 0x70–0x7F
     0x70: ("CHG bad part number",              "<B",    ["reg_data"]),
@@ -262,6 +283,8 @@ def fmt_payload(fields, values):
             parts.append(f"vbus={CHG_VBUS_STATUS.get(val, f'0x{val:02X}')}")
         elif name in ("fault0", "fault1", "reg_data", "reg", "err_code", "id", "value"):
             parts.append(f"{name}=0x{val:02X}")
+        elif name == "manuf_id":
+            parts.append(f"manuf_id=0x{val:04X}")
         elif name in ("written", "read_back"):
             parts.append(f"{name}=0x{val:04X}")
         elif name.startswith("r2") and len(name) == 3:
@@ -273,13 +296,13 @@ def fmt_payload(fields, values):
 
 CSV_HEADER = [
     "wall_time", "battery_id", "seconds",
-    "temp_aht_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
+    "temp_th_c", "temp_bq76920_c", "temp_bq25798_c", "humidity_pct",
     "cell1_mv", "cell2_mv", "cell3_mv",
     "vbus_mv", "ibus_ma", "vbat_mv", "ibat_ma", "ibat_cc_ma",
     "chg_a", "dsg_a", "chg_status", "vbus_type",
     "s0_hex", "s1_hex", "s2_hex", "s3_hex", "s4_hex",
     "sys_stat_hex", "cellbal_hex", "ctrl1_hex", "ctrl2_hex",
-    "bq_faults", "chg_on", "dsg_on",
+    "bq_faults", "chg_on", "dsg_on", "heater_on",
 ]
 
 
@@ -343,9 +366,9 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                 # Special case: status snapshot — print on multiple lines
                 if code == LOG_STATUS:
                     cell_idx = 0
-                    (battery_id, secs, t_aht, t_bal, t_chg, hum,
+                    (battery_id, secs, t_th, t_bal, t_chg, hum,
                      c1, c2, c3, vbus, ibus, vbat, ibat, ibat_cc,
-                     chg_stat, bq_stat) = values
+                     chg_stat, bq_stat, heater_on) = values
                     chg_a = ibat / 1000.0 if ibat > 0 else 0.0
                     dsg_a = abs(ibat) / 1000.0 if ibat < 0 else 0.0
 
@@ -364,7 +387,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                     bal_cells = [i for i in range(5) if cellbal & (1 << i)]
 
                     print(f"[{ts}] STATUS  id={battery_id} t={secs}s  "
-                          f"temp: aht={t_aht/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
+                          f"temp: th={t_th/10:.1f}°C bal={t_bal/10:.1f}°C chg={t_chg/10:.1f}°C  "
                           f"hum={hum}%")
                     print(f"         cells: {c1}mV {c2}mV {c3}mV  "
                           f"vbus={vbus}mV({vbus_type_str}) ibus={ibus}mA  "
@@ -374,10 +397,10 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                           f"s0=0x{s0:02X} s1=0x{s1:02X} s2=0x{s2:02X} s3=0x{s3:02X} s4=0x{s4:02X}  "
                           f"bq76920: stat=0x{sys_stat:02X}({' '.join(bq_flags) or 'OK'}) "
                           f"bal={bal_cells} ctrl2=0x{ctrl2:02X}(chg={'Y' if ctrl2&0x01 else 'N'} "
-                          f"dsg={'Y' if ctrl2&0x02 else 'N'})")
+                          f"dsg={'Y' if ctrl2&0x02 else 'N'})  heater={'ON' if heater_on else 'off'}")
                     csv_writer.writerow([
                         ts, battery_id, secs,
-                        f"{t_aht/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
+                        f"{t_th/10:.1f}", f"{t_bal/10:.1f}", f"{t_chg/10:.1f}", hum,
                         c1, c2, c3,
                         vbus, ibus, vbat, ibat, ibat_cc,
                         f"{chg_a:.3f}", f"{dsg_a:.3f}", chg_status_str, vbus_type_str,
@@ -385,6 +408,7 @@ def run(port, baud, csv_path=None, gpio_pin=None):
                         f"0x{sys_stat:02X}", f"0x{cellbal:02X}", f"0x{ctrl1:02X}", f"0x{ctrl2:02X}",
                         " ".join(bq_flags) or "OK",
                         "Y" if ctrl2 & 0x01 else "N", "Y" if ctrl2 & 0x02 else "N",
+                        "Y" if heater_on else "N",
                     ])
                     csv_file.flush()
                     continue

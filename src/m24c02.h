@@ -39,6 +39,18 @@ enum EepromResult {
     EEPROM_VERSION_ERR, // Data layout version not supported
 };
 
+// pcbAtLeast reports whether v is >= major.minor.patch. Used to gate firmware behaviour that
+// depends on which PCB revision is fitted (e.g. which sensor or resistor values are populated).
+inline bool pcbAtLeast(const PcbVersion &v, uint8_t major, uint8_t minor, uint8_t patch) {
+    if (v.major != major) {
+        return v.major > major;
+    }
+    if (v.minor != minor) {
+        return v.minor > minor;
+    }
+    return v.patch >= patch;
+}
+
 class M24C02 {
   public:
     bool begin();

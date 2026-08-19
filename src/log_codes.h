@@ -36,6 +36,9 @@
 #define LOG_MAIN_EEPROM_CRC_ERR     0x18  // EEPROM data CRC mismatch (blank or corrupt)
 #define LOG_MAIN_EEPROM_BAD_VER     0x19  // EEPROM data layout version unsupported; payload: u8 version
 #define LOG_MAIN_BATTERY_ID         0x1A  // Battery box ID from EEPROM;             payload: u16 id
+#define LOG_MAIN_HDC2080_FOUND      0x1B  // HDC2080 found
+#define LOG_MAIN_HDC2080_NOT_FOUND  0x1C  // HDC2080 not found
+#define LOG_MAIN_TEMP_HUM_FAIL      0x1D  // Temp/humidity sensor (AHT20 or HDC2080) read failed at startup
 
 // ── Protection (0x20–0x2F) ───────────────────────────────────────────────────
 #define LOG_PROT_UV_RECOVERED   0x20  // Cell UV recovered
@@ -48,7 +51,7 @@
 #define LOG_PROT_BQ76920_TEMP   0x27  // BQ76920 temp reading;   payload: i16 (°C × 10)
 #define LOG_PROT_VBAT_OVP       0x28  // VBAT over voltage protection
 #define LOG_PROT_BQ25798_T_ERR  0x29  // BQ25798 temperature fault
-#define LOG_PROT_AHT20          0x2A  // AHT20 readings;         payload: i16 temp (°C × 10), u16 humidity (% × 10)
+#define LOG_PROT_TEMP_HUM       0x2A  // Temp/humidity sensor readings (AHT20 or HDC2080); payload: i16 temp (°C × 10), u16 humidity (% × 10)
 #define LOG_PROT_STATE          0x2B  // State change;           payload: u8 flags (bit0=healthy, bit1=chg, bit2=discharge, bit3=bal, bit4=heat)
 #define LOG_PROT_CHARGER_TEMP   0x2C  // BQ25798 NTC temp;       payload: i16 (°C × 10)
 
@@ -63,6 +66,16 @@
 #define LOG_AHT_CRC_ERR                0x57  // CRC mismatch
 #define LOG_AHT_TIMEOUT                0x58  // Measurement timeout
 #define LOG_AHT_STATUS                 0x59  // Status byte at begin(); payload: u8 status
+
+// ── HDC2080 (0xA0–0xAF) ──────────────────────────────────────────────────────
+#define LOG_HDC_MANUF_ID_FAIL 0xA0  // Manufacturer ID read failed
+#define LOG_HDC_BAD_MANUF_ID  0xA1  // Manufacturer ID mismatch;    payload: u16 (LOW | HIGH<<8)
+#define LOG_HDC_CONFIG_FAIL   0xA2  // Measurement config write failed
+#define LOG_HDC_TRIGGER_FAIL  0xA3  // Trigger write failed
+#define LOG_HDC_NO_TRIGGER    0xA4  // readResult called without trigger
+#define LOG_HDC_STATUS_FAIL   0xA5  // DRDY status register read failed
+#define LOG_HDC_BUSY          0xA6  // Conversion not complete (DRDY not set)
+#define LOG_HDC_DATA_FAIL     0xA7  // Data register read failed
 
 // ── Util (0x60–0x6F) ─────────────────────────────────────────────────────────
 #define LOG_UTIL_BUZZER_ERR     0x60  // Buzzer frequency out of range

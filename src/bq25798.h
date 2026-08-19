@@ -19,9 +19,12 @@
 // Minimal system voltage raw register value (unit: 250mV, offset 2500mV). 10 = 5V
 #define BQ25798_CFG_MIN_SYS_VOLTAGE 10
 
-// NTC thermistor voltage divider resistors (ohms)
-#define BQ25798_NTC_R1_OHMS 5000
-#define BQ25798_NTC_R2_OHMS 30000
+// NTC thermistor voltage divider resistors (ohms). PCB revisions before 0.3.0 used 5k/30k;
+// 0.3.0 onwards uses more precise E96 values, 5.23k/30.9k.
+#define BQ25798_NTC_R1_OHMS_V1 5000
+#define BQ25798_NTC_R2_OHMS_V1 30000
+#define BQ25798_NTC_R1_OHMS_V2 5230
+#define BQ25798_NTC_R2_OHMS_V2 30900
 
 enum class BQ25798_TEMP { COLD = 0, COOL, GOOD, WARM, HOT };
 
@@ -149,7 +152,7 @@ typedef enum {
 
 class BQ25798 {
   public:
-    bool begin(int);
+    bool begin(int enablePin, float ntcR1Ohms, float ntcR2Ohms);
     void sourceRetry();
     void checkStatus();
     void init();
@@ -191,6 +194,8 @@ class BQ25798 {
     uint8_t chargeStatus;
     uint8_t vbusStatus;
     int enablePin;
+    float ntcR1Ohms_ = BQ25798_NTC_R1_OHMS_V1;
+    float ntcR2Ohms_ = BQ25798_NTC_R2_OHMS_V1;
     void readADC();
 };
 

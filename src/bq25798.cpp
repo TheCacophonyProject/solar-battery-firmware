@@ -7,9 +7,11 @@
 // Check that we can find the BQ76920 on the I2C bus.
 // This is done by reading the Part Information Register (0x48).
 // Returning false if it can not be found.
-bool BQ25798::begin(int enablePin) {
+bool BQ25798::begin(int enablePin, float ntcR1Ohms, float ntcR2Ohms) {
     // Set enable/disable pin as an output.
     this->enablePin = enablePin;
+    this->ntcR1Ohms_ = ntcR1Ohms;
+    this->ntcR2Ohms_ = ntcR2Ohms;
     pinMode(enablePin, OUTPUT);
     // Set it to high to disable the chip.
     // The main loop will enable it when ready.
@@ -496,9 +498,7 @@ float BQ25798::readTemp() {
     // and the percentage of the voltage divider.
 
     float percentage = val * 0.000976563f;
-    float r1 = BQ25798_NTC_R1_OHMS;
-    float r2 = BQ25798_NTC_R2_OHMS;
-    float rt = (percentage * r1 * r2) / (r2 - percentage * (r1 + r2));
+    float rt = (percentage * ntcR1Ohms_ * ntcR2Ohms_) / (ntcR2Ohms_ - percentage * (ntcR1Ohms_ + ntcR2Ohms_));
     return ntcTempFromResistance(uint32_t(rt));
 }
 
@@ -522,9 +522,7 @@ void BQ25798::readADCAll(BQ25798ADC &out) {
 
     readWord(BQ25798_REG3F_TS_ADC, &val);
     float p = val * 0.000976563f;
-    float r1 = BQ25798_NTC_R1_OHMS;
-    float r2 = BQ25798_NTC_R2_OHMS;
-    float rt = (p * r1 * r2) / (r2 - p * (r1 + r2));
+    float rt = (p * ntcR1Ohms_ * ntcR2Ohms_) / (ntcR2Ohms_ - p * (ntcR1Ohms_ + ntcR2Ohms_));
     out.tempC = ntcTempFromResistance(uint32_t(rt));
 }
 

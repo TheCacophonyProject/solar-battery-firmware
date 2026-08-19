@@ -5,7 +5,8 @@
 // List of PCB versions this firmware is compatible with.
 // Add entries here as the PCB evolves without requiring firmware changes.
 static const PcbVersion COMPATIBLE_VERSIONS[] = {
-    {0, 2, 0}, // TODO. Test when we have a newer version of the PCB.
+    {0, 2, 0},
+    {0, 3, 0}, // HDC2080 temperature/humidity sensor instead of AHT20.
 };
 
 bool M24C02::begin() {

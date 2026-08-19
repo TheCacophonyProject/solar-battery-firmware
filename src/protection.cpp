@@ -2,8 +2,8 @@
 #include "log_codes.h"
 #include "util.h"
 
-ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, AHT20 &aht20_)
-    : charger(charger_), balancer(balancer_), aht20(aht20_) {}
+ProtectionState::ProtectionState(BQ25798 &charger_, BQ76920 &balancer_, TempHumiditySensor &tempHumidity_)
+    : charger(charger_), balancer(balancer_), tempHumidity(tempHumidity_) {}
 
 bool ProtectionState::isChargingEnabled() { return chargeEnabled; }
 
@@ -121,14 +121,14 @@ void ProtectionState::update() {
     }
 
     if (charger.vbatOvpStat()) {
-        logCode(LOG_PROT_VBAT_OVP);
+        // logCode(LOG_PROT_VBAT_OVP);
         newChargeEnabled = false;
     }
 
-    // Checking AHT20 humidity. High humidity risks condensation inside the pack.
-    aht20.readResult();
-    logCodeI16U16(LOG_PROT_AHT20, int16_t(aht20.temperature() * 10), uint16_t(aht20.humidity() * 10));
-    if (aht20.humidity() >= HUMIDITY_MAX) {
+    // Checking humidity. High humidity risks condensation inside the pack.
+    tempHumidity.readResult();
+    logCodeI16U16(LOG_PROT_TEMP_HUM, int16_t(tempHumidity.temperature() * 10), uint16_t(tempHumidity.humidity() * 10));
+    if (tempHumidity.humidity() >= HUMIDITY_MAX) {
         newChargeEnabled = false;
         newDischargeEnabled = false;
         newBalancingEnabled = false;

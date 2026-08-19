@@ -4,20 +4,20 @@
 #include <avr/sleep.h>
 #include <avr/wdt.h>
 
-#include "aht20.h"
 #include "bq25798.h"
 #include "bq76920.h"
 #include "log_codes.h"
 #include "m24c02.h"
 #include "main.h"
 #include "protection.h"
+#include "temp_humidity.h"
 #include "util.h"
 
 #define WDT_DURATION WDTO_2S
 
 BQ25798 charger;
 BQ76920 balancer;
-AHT20 tempHumidity;
+TempHumiditySensor tempHumidity;
 M24C02 eeprom;
 ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidity);
 
@@ -175,7 +175,11 @@ void setup() {
     }
 
     // Try to find the BQ25798 (MPPT charger)
-    if (!charger.begin(PIN_CE)) {
+    // PCB revisions before 0.3.0 have 5k/30k NTC divider resistors; 0.3.0 onwards has 5.23k/30.9k.
+    bool pcbV2 = pcbAtLeast(eepromData.pcb, 0, 3, 0);
+    float ntcR1 = pcbV2 ? BQ25798_NTC_R1_OHMS_V2 : BQ25798_NTC_R1_OHMS_V1;
+    float ntcR2 = pcbV2 ? BQ25798_NTC_R2_OHMS_V2 : BQ25798_NTC_R2_OHMS_V1;
+    if (!charger.begin(PIN_CE, ntcR1, ntcR2)) {
         logCode(LOG_MAIN_BQ25798_NOT_FOUND);
         restart();
     }
@@ -209,13 +213,13 @@ void setup() {
     waitUntilNextBeep();
     buzzer_beep();
 
-    // Try to find the AHT20 (temperature and humidity sensor)
-    if (!tempHumidity.begin()) {
-        logCode(LOG_MAIN_AHT20_NOT_FOUND);
+    // Try to find the temperature/humidity sensor (AHT20 or HDC2080, depending on PCB version).
+    if (!tempHumidity.begin(eepromData.pcb)) {
+        logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_NOT_FOUND : LOG_MAIN_AHT20_NOT_FOUND);
         restart();
     }
-    logCode(LOG_MAIN_AHT20_FOUND);
-    // Trigger the first AHT20 measurement now so it completes during the remaining startup sequence.
+    logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_FOUND : LOG_MAIN_AHT20_FOUND);
+    // Trigger the first measurement now so it completes during the remaining startup sequence.
     tempHumidity.trigger();
     waitUntilNextBeep();
     buzzer_beep();
@@ -241,16 +245,16 @@ void setup() {
     // Check that temperature readings are sensible at startup.
     // All sensors must read 15–35 °C and agree within 10 °C of each other.
     if (!tempHumidity.readResult()) {
-        logCode(LOG_MAIN_AHT20_FAIL);
+        logCode(LOG_MAIN_TEMP_HUM_FAIL);
         waitUntilNextBeep();
         restart();
     }
-    float ahtTemp = tempHumidity.temperature();
+    float tempHumTemp = tempHumidity.temperature();
     float balancerTemp = balancer.readTemp();
     float chargerTemp = charger.readTemp();
-    logCode3I16(LOG_MAIN_TEMPS, int16_t(ahtTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
-    float tMin = min(ahtTemp, min(balancerTemp, chargerTemp));
-    float tMax = max(ahtTemp, max(balancerTemp, chargerTemp));
+    logCode3I16(LOG_MAIN_TEMPS, int16_t(tempHumTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
+    float tMin = min(tempHumTemp, min(balancerTemp, chargerTemp));
+    float tMax = max(tempHumTemp, max(balancerTemp, chargerTemp));
     if (tMin < 0.0f || tMax > 45.0f) {
         logCode(LOG_MAIN_TEMP_OOR);
         waitUntilNextBeep();
