@@ -31,6 +31,7 @@ ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidit
 #define PIN_PULL_SENSE_LOW_OLD PIN_PC3 // Pin used on some older PCBs for pulling sense low
 #define PIN_PIN_PULL_SENSE_LOW PIN_PC1 // Pin use on newer PCBs for pulling sense low
 #define PIN_EN_HEATER PIN_PC0          // Pin used to turn on the internal trace heater
+#define PIN_SENSE_HEATER PIN_PA1       // Pin used to sense that the heater switch is closed/soldered on.
 
 uint16_t batteryId = 0; // Battery box ID read from the EEPROM at startup, sent in the status payload.
 uint32_t seconds = 0;   // Don't need to worry about an overflow for this as it will last
@@ -70,13 +71,17 @@ void setup() {
     _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_2KCLK_gc);
 
     // Set pins modes
+    // Disable charger (CE HIGH = disabled)
+    digitalWrite(PIN_CE, HIGH);
+    pinMode(PIN_CE, OUTPUT);
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_TS1, INPUT);
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
     pinMode(BUZZER_PIN, OUTPUT);
-    pinMode(PIN_EN_HEATER, OUTPUT);
     digitalWrite(PIN_EN_HEATER, LOW);
+    pinMode(PIN_EN_HEATER, OUTPUT);
+    pinMode(PIN_SENSE_HEATER, INPUT);
 
     // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW_OLD and
     // PIN_PULL_SENSE_LOW are wired together. If we don't do this we risk having shorting PIN_PULL_SENSE_LOW to ground
@@ -170,6 +175,14 @@ void setup() {
     if (!eeprom.isCompatible(eepromData.pcb)) {
         logCodeBytes(LOG_MAIN_PCB_INCOMPAT, (uint8_t *)&eepromData.pcb, 3);
         restart(ERROR_FIRMWARE_NOT_COMPATIBLE_WITH_PCB);
+    }
+
+    // If the heater switch is not connected we would read 0V here.
+    // If it is soldered (and closed) it will read Vin / 11. At a 5V in that gives (5/11)/3.3*1023 = 140.
+    // For this check to pass power needs to be connected.
+    if (analogRead(PIN_SENSE_HEATER) < 50) {
+        waitUntilNextBeep();
+        restart(ERROR_MISSING_THERMAL_SWITCH);
     }
 
     // Try to find the BQ25798 (MPPT charger)
