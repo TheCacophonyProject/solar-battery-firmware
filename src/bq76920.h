@@ -19,7 +19,7 @@
 #define BQ76920_ADDRESS 0x08
 
 // Sense resistor value in milliohms (used for coulomb counter current calculation)
-#define BQ76920_SENSE_RESISTOR_MOHM 5
+#define BQ76920_SENSE_RESISTOR_MOHM 15
 
 // Voltage difference between the highest and lowest cell where the balance routine will start(in mV)
 #define CELL_BALANCE_THRESHOLD_START 60
