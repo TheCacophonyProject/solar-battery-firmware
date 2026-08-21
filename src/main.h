@@ -6,7 +6,7 @@
 void ledOn();
 void ledOff();
 void mainMode();
-void restart();
+void restart(uint8_t errorCode);
 void chargerInterrupt();
 void balancerInterrupt();
 void sleepMode();

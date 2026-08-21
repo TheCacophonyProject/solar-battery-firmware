@@ -6,6 +6,7 @@
 
 #include "bq25798.h"
 #include "bq76920.h"
+#include "error_codes.h"
 #include "log_codes.h"
 #include "m24c02.h"
 #include "main.h"
@@ -143,7 +144,7 @@ void setup() {
     // Read data block from EEPROM and verify PCB compatibility.
     if (!eeprom.begin()) {
         logCode(LOG_MAIN_EEPROM_NOT_FOUND);
-        restart();
+        restart(ERROR_NO_EEPROM_DATA);
     }
     logCode(LOG_MAIN_EEPROM_FOUND);
     EepromData eepromData = {};
@@ -152,15 +153,15 @@ void setup() {
         break;
     case EEPROM_CRC_ERR:
         logCode(LOG_MAIN_EEPROM_CRC_ERR);
-        restart();
+        restart(ERROR_NO_EEPROM_DATA);
         break;
     case EEPROM_VERSION_ERR:
         logCodeU8(LOG_MAIN_EEPROM_BAD_VER, eepromData.version);
-        restart();
+        restart(ERROR_NO_EEPROM_DATA);
         break;
     default:
         logCode(LOG_MAIN_EEPROM_NOT_FOUND);
-        restart();
+        restart(ERROR_NO_EEPROM_DATA);
         break;
     }
     batteryId = eepromData.id;
@@ -168,7 +169,7 @@ void setup() {
     logCodeBytes(LOG_MAIN_PCB_VERSION, (uint8_t *)&eepromData.pcb, 3);
     if (!eeprom.isCompatible(eepromData.pcb)) {
         logCodeBytes(LOG_MAIN_PCB_INCOMPAT, (uint8_t *)&eepromData.pcb, 3);
-        restart();
+        restart(ERROR_FIRMWARE_NOT_COMPATIBLE_WITH_PCB);
     }
 
     // Try to find the BQ25798 (MPPT charger)
@@ -178,7 +179,7 @@ void setup() {
     float ntcR2 = pcbV2 ? BQ25798_NTC_R2_OHMS_V2 : BQ25798_NTC_R2_OHMS_V1;
     if (!charger.begin(PIN_CE, ntcR1, ntcR2)) {
         logCode(LOG_MAIN_BQ25798_NOT_FOUND);
-        restart();
+        restart(ERROR_MISSING_BQ25798);
     }
     logCode(LOG_MAIN_BQ25798_FOUND);
     waitUntilNextBeep();
@@ -203,7 +204,7 @@ void setup() {
         wakeUpBalancer();
         if (!balancer.begin()) {
             logCode(LOG_MAIN_BQ76920_NOT_FOUND);
-            restart();
+            restart(ERROR_MISSING_BQ76920);
         }
     }
     logCode(LOG_MAIN_BQ76920_FOUND);
@@ -213,7 +214,7 @@ void setup() {
     // Try to find the temperature/humidity sensor (AHT20 or HDC2080, depending on PCB version).
     if (!tempHumidity.begin(eepromData.pcb)) {
         logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_NOT_FOUND : LOG_MAIN_AHT20_NOT_FOUND);
-        restart();
+        restart(ERROR_MISSING_TEMP_HUMIDITY_SENSOR);
     }
     logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_FOUND : LOG_MAIN_AHT20_FOUND);
     // Trigger the first measurement now so it completes during the remaining startup sequence.
@@ -234,7 +235,7 @@ void setup() {
     if (!balancer.properCellPopulation()) {
         logCode(LOG_MAIN_CELL_POP_FAIL);
         waitUntilNextBeep();
-        restart();
+        restart(ERROR_MISSING_CELLS);
     }
     waitUntilNextBeep();
     buzzer_beep();
@@ -244,7 +245,7 @@ void setup() {
     if (!tempHumidity.readResult()) {
         logCode(LOG_MAIN_TEMP_HUM_FAIL);
         waitUntilNextBeep();
-        restart();
+        restart(ERROR_TEMP_READING_FAILED);
     }
     float tempHumTemp = tempHumidity.temperature();
     float balancerTemp = balancer.readTemp();
@@ -252,15 +253,20 @@ void setup() {
     logCode3I16(LOG_MAIN_TEMPS, int16_t(tempHumTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
     float tMin = min(tempHumTemp, min(balancerTemp, chargerTemp));
     float tMax = max(tempHumTemp, max(balancerTemp, chargerTemp));
-    if (tMin < 0.0f || tMax > 45.0f) {
+    if (tMin < 5.0f) {
         logCode(LOG_MAIN_TEMP_OOR);
         waitUntilNextBeep();
-        restart();
+        restart(ERROR_TEMP_TOO_LOW);
+    }
+    if (tMax > 35.0f) {
+        logCode(LOG_MAIN_TEMP_OOR);
+        waitUntilNextBeep();
+        restart(ERROR_TEMP_TOO_HIGH);
     }
     if (tMax - tMin > 10.0f) {
         logCode(LOG_MAIN_TEMP_MISMATCH);
         waitUntilNextBeep();
-        restart();
+        restart(ERROR_TEMP_DONT_MATCH);
     }
     waitUntilNextBeep();
     buzzer_beep();
@@ -548,15 +554,30 @@ void mainMode() {
     }
 }
 
-void restart() {
+void restart(uint8_t errorCode) {
     logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
     waitUntilNextBeep();
     buzzer_on(500);
+    wdt_reset();
     delay(400);
     buzzer_on(200);
+    wdt_reset();
     delay(400);
     buzzer_off();
+    wdt_reset();
+    delay(400);
+
+    for (int i = 0; i < errorCode; i++) {
+        buzzer_on(500);
+        wdt_reset();
+        delay(300);
+        buzzer_off();
+        wdt_reset();
+        delay(300);
+    }
+    wdt_reset();
+    delay(1000);
 
     cli();
     _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
