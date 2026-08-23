@@ -177,14 +177,6 @@ void setup() {
         restart(ERROR_FIRMWARE_NOT_COMPATIBLE_WITH_PCB);
     }
 
-    // If the heater switch is not connected we would read 0V here.
-    // If it is soldered (and closed) it will read Vin / 11. At a 5V in that gives (5/11)/3.3*1023 = 140.
-    // For this check to pass power needs to be connected.
-    if (analogRead(PIN_SENSE_HEATER) < 50) {
-        waitUntilNextBeep();
-        restart(ERROR_MISSING_THERMAL_SWITCH);
-    }
-
     // Try to find the BQ25798 (MPPT charger)
     // PCB revisions before 0.3.0 have 5k/30k NTC divider resistors; 0.3.0 onwards has 5.23k/30.9k.
     bool pcbV2 = pcbAtLeast(eepromData.pcb, 0, 3, 0);
@@ -198,16 +190,41 @@ void setup() {
     waitUntilNextBeep();
     buzzer_beep();
 
+    // Check that ther is power in
+    BQ25798ADC chargerADC = {};
+    charger.readADCAll(chargerADC);
+    if (chargerADC.vbus_mv <= 1000) {
+        // Input voltage is too low.
+        restart(ERROR_LOW_INPUT_VOLTAGE);
+    }
+
+    // If the heater switch is not connected we would read 0V here.
+    // If it is soldered (and closed) it will read Vin / 11. At a 5V in that gives (5/11)/3.3*1023 = 140.
+    // For this check to pass power needs to be connected.
+    if (analogRead(PIN_SENSE_HEATER) < 10) {
+        waitUntilNextBeep();
+        restart(ERROR_MISSING_THERMAL_SWITCH);
+    }
+
     // Try to find the BQ76920 (cell balancer)
-    // The BQ76920 is powered from the battery pack voltage so we will wait until we can detect a battery pack before
-    // trying to find the BQ76920.
-    while (1) {
+    // The BQ76920 is powered from the battery pack voltage so we will wait until we can detect a battery pack
+    // before trying to find the BQ76920.
+    digitalWrite(PIN_CE, LOW);
+    bool vbatPresent = false;
+    for (uint8_t i = 0; i < 10; i++) {
         if (charger.vbatPresent()) {
+            vbatPresent = true;
             break;
         }
         delay(100);
         wdt_reset();
     }
+    if (!vbatPresent) {
+        restart(ERROR_MISSING_CELLS);
+    }
+    digitalWrite(PIN_CE, HIGH);
+
+    logCode(LOG_MAIN_BQ76920_FOUND);
     waitUntilNextBeep();
     buzzer_beep();
 
