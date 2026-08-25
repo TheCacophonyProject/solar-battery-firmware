@@ -27,11 +27,12 @@ ProtectionState protectionState = ProtectionState(charger, balancer, tempHumidit
 #define PIN_TS1 PIN_PA7                // BQ76920 TS1
 #define PIN_ALERT PIN_PA6              // BQ76920 ALERT
 #define PIN_INTERRUPT PIN_PA2          // BQ25798 Interrupt
-#define PIN_CE PIN_PA5                 // BQ25798 ~Charge Enable
+#define PIN_CE_N PIN_PA5               // BQ25798 /Charge Enable (Active low)
 #define PIN_PULL_SENSE_LOW_OLD PIN_PC3 // Pin used on some older PCBs for pulling sense low
 #define PIN_PIN_PULL_SENSE_LOW PIN_PC1 // Pin use on newer PCBs for pulling sense low
 #define PIN_EN_HEATER PIN_PC0          // Pin used to turn on the internal trace heater
 #define PIN_SENSE_HEATER PIN_PA1       // Pin used to sense that the heater switch is closed/soldered on.
+#define PIN_BUZZER PIN_PA3
 
 uint16_t batteryId = 0; // Battery box ID read from the EEPROM at startup, sent in the status payload.
 uint32_t seconds = 0;   // Don't need to worry about an overflow for this as it will last
@@ -66,23 +67,27 @@ void waitUntilNextBeep() {
 }
 
 void setup() {
-    // Setup WDT
+    // ======== Setup WDT ========
     wdt_reset();
     _PROTECTED_WRITE(WDT.CTRLA, WDT_PERIOD_2KCLK_gc);
 
-    // Set pins modes
-    // Disable charger (CE HIGH = disabled)
-    digitalWrite(PIN_CE, HIGH);
-    pinMode(PIN_CE, OUTPUT);
+    // ======== Set Pins ========
+    // Set pin modes and initial values.
+    digitalWrite(PIN_CE_N, HIGH);
+    pinMode(PIN_CE_N, OUTPUT);
+    digitalWrite(PIN_LED, LOW);
     pinMode(PIN_LED, OUTPUT);
+    digitalWrite(PIN_BUZZER, LOW);
+    pinMode(PIN_BUZZER, OUTPUT);
+    digitalWrite(PIN_EN_HEATER, LOW);
+    pinMode(PIN_EN_HEATER, OUTPUT);
+
+    pinMode(PIN_SENSE_HEATER, INPUT);
     pinMode(PIN_TS1, INPUT);
     pinMode(PIN_ALERT, INPUT);
     pinMode(PIN_INTERRUPT, INPUT_PULLUP);
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(PIN_EN_HEATER, LOW);
-    pinMode(PIN_EN_HEATER, OUTPUT);
-    pinMode(PIN_SENSE_HEATER, INPUT);
 
+    // ======== Pull sense low detect ========
     // Because of different versions of the board we need to first find out if PIN_PULL_SENSE_LOW_OLD and
     // PIN_PULL_SENSE_LOW are wired together. If we don't do this we risk having shorting PIN_PULL_SENSE_LOW to ground
     // through PIN_PULL_SENSE_LOW_OLD. To do this we will set PIN_PULL_SENSE_LOW_OLD as INPUT_PULLIP and drive
@@ -100,9 +105,7 @@ void setup() {
         digitalWrite(PIN_PULL_SENSE_LOW_OLD, LOW);
     }
 
-    // Set pin initial states
-    ledOff();
-
+    // ======== Setup Serial ========
     // Setup serial interface. Always on: it's used for both debug log codes (gated per-file by
     // DEBUGGING in util.h) and the periodic status snapshot in loop(), which is unconditional.
     Serial.begin(9600);
@@ -128,25 +131,14 @@ void setup() {
         CCL_ENABLE_bm; // OUTEN (bit 3): drive PIN_PULL_SENSE_LOW from LUT; ENABLE (bit 0): enable LUT1 (section 28.5.3)
     CCL.CTRLA = CCL_ENABLE_bm; // Enable CCL peripheral (section 28.3.2.1)
 
-    // while (true) {
-    //     logCode(LOG_MAIN_STARTING);
-    //     delay(1000);
-    //     wdt_reset();
-    //     digitalWrite(PIN_PULL_SENSE_LOW_OLD, false);
-    //     delay(1000);
-    //     wdt_reset();
-    //     digitalWrite(PIN_PULL_SENSE_LOW_OLD, true);
-    // }
-    // TODO: Detect boot reason.
-
-    // Start up buzzer noise.
+    // ======== Setup Buzzer ========
     buzzer_pin_init();
     buzzer_beep();
 
-    // Setup i2C
+    // ======= Setup I2C ========
     Wire.begin();
 
-    // Read data block from EEPROM and verify PCB compatibility.
+    // ======= Setup EEPROM ========
     if (!eeprom.begin()) {
         logCode(LOG_MAIN_EEPROM_NOT_FOUND);
         restart(ERROR_NO_EEPROM_DATA);
@@ -177,12 +169,13 @@ void setup() {
         restart(ERROR_FIRMWARE_NOT_COMPATIBLE_WITH_PCB);
     }
 
+    // ====== Setup BQ25798 ========
     // Try to find the BQ25798 (MPPT charger)
     // PCB revisions before 0.3.0 have 5k/30k NTC divider resistors; 0.3.0 onwards has 5.23k/30.9k.
     bool pcbV2 = pcbAtLeast(eepromData.pcb, 0, 3, 0);
     float ntcR1 = pcbV2 ? BQ25798_NTC_R1_OHMS_V2 : BQ25798_NTC_R1_OHMS_V1;
     float ntcR2 = pcbV2 ? BQ25798_NTC_R2_OHMS_V2 : BQ25798_NTC_R2_OHMS_V1;
-    if (!charger.begin(PIN_CE, ntcR1, ntcR2)) {
+    if (!charger.begin(PIN_CE_N, ntcR1, ntcR2)) {
         logCode(LOG_MAIN_BQ25798_NOT_FOUND);
         restart(ERROR_MISSING_BQ25798);
     }
@@ -198,6 +191,7 @@ void setup() {
         restart(ERROR_LOW_INPUT_VOLTAGE);
     }
 
+    // ====== Check that the Heater Switch is connected ========
     // If the heater switch is not connected we would read 0V here.
     // If it is soldered (and closed) it will read Vin / 11. At a 5V in that gives (5/11)/3.3*1023 = 140.
     // For this check to pass power needs to be connected.
@@ -206,30 +200,45 @@ void setup() {
         restart(ERROR_MISSING_THERMAL_SWITCH);
     }
 
-    // Try to find the BQ76920 (cell balancer)
-    // The BQ76920 is powered from the battery pack voltage so we will wait until we can detect a battery pack
-    // before trying to find the BQ76920.
-    digitalWrite(PIN_CE, LOW);
-    bool vbatPresent = false;
-    for (uint8_t i = 0; i < 10; i++) {
-        if (charger.vbatPresent()) {
-            vbatPresent = true;
-            break;
+    // ======== First Temp/Humidity Checks ========
+    // In this first check we read the temperature and humidity sensors that are available.
+    // The balancer might not yet be available so we don't error if we can't get its temperature reading.
+    // In the second temperature and humidity check we will make sure that we can read the balancer temperature.
+    // We do this first check so we can not turn on the charger if the temperature is out of range.
+
+    // Try to find the temperature/humidity sensor (AHT20 or HDC2080, depending on PCB version).
+    if (!tempHumidity.begin(eepromData.pcb)) {
+        logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_NOT_FOUND : LOG_MAIN_AHT20_NOT_FOUND);
+        restart(ERROR_MISSING_TEMP_HUMIDITY_SENSOR);
+    }
+    logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_FOUND : LOG_MAIN_AHT20_FOUND);
+
+    setupTempAndHumidityCheck(true);
+    waitUntilNextBeep();
+    buzzer_beep();
+
+    // ========= Find the BQ76920 (cell balancer) =========
+    // If the cell balancer was not found during the initial temperature and humidity check
+    // we want to enable the charger to power up the cell balancer.
+    // We want to power the charger just long enough to "power up" the cells.
+    // The cells need "powered up" as the individual cell protection will prevent the cells from charging/discharging
+    // until a voltage is applied. Enabling the charger should provide this voltage.
+    bool vbatPresent = charger.vbatPresent();
+    if (!vbatPresent) {
+        // Power up the cells: their individual protection blocks charge/discharge until a voltage is applied.
+        digitalWrite(PIN_CE_N, LOW);
+        for (uint8_t i = 0; i < 10 && !vbatPresent; i++) {
+            delay(100);
+            wdt_reset();
+            vbatPresent = charger.vbatPresent();
         }
-        delay(100);
-        wdt_reset();
+        digitalWrite(PIN_CE_N, HIGH);
     }
     if (!vbatPresent) {
         restart(ERROR_MISSING_CELLS);
     }
-    digitalWrite(PIN_CE, HIGH);
 
-    logCode(LOG_MAIN_BQ76920_FOUND);
-    waitUntilNextBeep();
-    buzzer_beep();
-
-    // Try to find the BQ76920 (cell balancer)
-    // If it is the first power up we might need to wake it up first.
+    // Now that we have the cells powered up we want to find the cell balancer.
     if (!balancer.begin()) {
         wakeUpBalancer();
         if (!balancer.begin()) {
@@ -240,21 +249,6 @@ void setup() {
     logCode(LOG_MAIN_BQ76920_FOUND);
     waitUntilNextBeep();
     buzzer_beep();
-
-    // Try to find the temperature/humidity sensor (AHT20 or HDC2080, depending on PCB version).
-    if (!tempHumidity.begin(eepromData.pcb)) {
-        logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_NOT_FOUND : LOG_MAIN_AHT20_NOT_FOUND);
-        restart(ERROR_MISSING_TEMP_HUMIDITY_SENSOR);
-    }
-    logCode(tempHumidity.usingHdc2080() ? LOG_MAIN_HDC2080_FOUND : LOG_MAIN_AHT20_FOUND);
-    // Trigger the first measurement now so it completes during the remaining startup sequence.
-    tempHumidity.trigger();
-    waitUntilNextBeep();
-    buzzer_beep();
-
-    // Once we have found the BQ76920 we should turn off the charging so we can get a good read on what the cell
-    // voltages are on start up.
-    charger.disable();
 
     // Extended delay to give time to make voltage and temperature readings.
     wdt_reset();
@@ -270,49 +264,24 @@ void setup() {
     waitUntilNextBeep();
     buzzer_beep();
 
-    // Check that temperature readings are sensible at startup.
-    // All sensors must read 15–35 °C and agree within 10 °C of each other.
-    if (!tempHumidity.readResult()) {
-        logCode(LOG_MAIN_TEMP_HUM_FAIL);
-        waitUntilNextBeep();
-        restart(ERROR_TEMP_READING_FAILED);
-    }
-    float tempHumTemp = tempHumidity.temperature();
-    float balancerTemp = balancer.readTemp();
-    float chargerTemp = charger.readTemp();
-    logCode3I16(LOG_MAIN_TEMPS, int16_t(tempHumTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
-    float tMin = min(tempHumTemp, min(balancerTemp, chargerTemp));
-    float tMax = max(tempHumTemp, max(balancerTemp, chargerTemp));
-    if (tMin < 5.0f) {
-        logCode(LOG_MAIN_TEMP_OOR);
-        waitUntilNextBeep();
-        restart(ERROR_TEMP_TOO_LOW);
-    }
-    if (tMax > 35.0f) {
-        logCode(LOG_MAIN_TEMP_OOR);
-        waitUntilNextBeep();
-        restart(ERROR_TEMP_TOO_HIGH);
-    }
-    if (tMax - tMin > 10.0f) {
-        logCode(LOG_MAIN_TEMP_MISMATCH);
-        waitUntilNextBeep();
-        restart(ERROR_TEMP_DONT_MATCH);
-    }
+    // ======== Second Temp/Humidity Checks ========
+    // In this second check we read the temperature and humidity sensors from all sensors.
+    // The balancer temperature reading is now mandatory.
+    setupTempAndHumidityCheck(false);
     waitUntilNextBeep();
     buzzer_beep();
 
-    // Setup interrupts
+    // ======== Setup interrupts ========
     attachInterrupt(digitalPinToInterrupt(PIN_ALERT), balancerInterrupt, RISING);
     attachInterrupt(digitalPinToInterrupt(PIN_INTERRUPT), chargerInterrupt, FALLING);
     setupPIT();
-    waitUntilNextBeep();
-    buzzer_beep();
 
-    // Play setup finished noise
+    // ======== Play setup finished noise ========
     waitUntilNextBeep();
     waitUntilNextBeep();
     start_up_buzz();
 
+    // ======== Enable sleep mode ========
     set_sleep_mode(SLEEP_MODE_PWR_DOWN);
     sleep_enable();
 }
@@ -585,6 +554,7 @@ void mainMode() {
 }
 
 void restart(uint8_t errorCode) {
+    digitalWrite(PIN_CE_N, HIGH);
     logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
     waitUntilNextBeep();
@@ -612,5 +582,54 @@ void restart(uint8_t errorCode) {
     cli();
     _PROTECTED_WRITE(RSTCTRL.SWRR, RSTCTRL_SWRE_bm);
     while (1) {
+    }
+}
+
+// Check the temperature and humidity are in the acceptable ranges for the setup process.
+// If they are not then the system will restart.
+// Checking the balancer might be optional as it might not yet be present in the setup process.
+void setupTempAndHumidityCheck(bool balancerOptional) {
+    // Trigger the first measurement now so it completes during the remaining startup sequence.
+    tempHumidity.trigger();
+    waitUntilNextBeep();
+    buzzer_beep();
+
+    if (!tempHumidity.readResult()) {
+        logCode(LOG_MAIN_TEMP_HUM_FAIL);
+        waitUntilNextBeep();
+        restart(ERROR_TEMP_READING_FAILED);
+    }
+    float tempHumTemp = tempHumidity.temperature();
+    float chargerTemp = charger.readTemp();
+
+    // If the balancer is optional only read it if it is found.
+    float balancerTemp = balancerOptional ? chargerTemp : balancer.readTemp();
+    if (balancerOptional && balancer.begin()) {
+        // After the balancer is booted up we need to wait 2 seconds before reading the temp.
+        delay(1100);
+        wdt_reset();
+        delay(1100);
+        wdt_reset();
+        balancerTemp = balancer.readTemp();
+    }
+
+    logCode3I16(LOG_MAIN_TEMPS, int16_t(tempHumTemp * 10), int16_t(balancerTemp * 10), int16_t(chargerTemp * 10));
+
+    float tMin = min(tempHumTemp, min(balancerTemp, chargerTemp));
+    float tMax = max(tempHumTemp, max(balancerTemp, chargerTemp));
+    if (tMin < 5.0f) {
+        logCode(LOG_MAIN_TEMP_OOR);
+        waitUntilNextBeep();
+        restart(ERROR_TEMP_TOO_LOW);
+    }
+    if (tMax > 35.0f) {
+        logCode(LOG_MAIN_TEMP_OOR);
+        waitUntilNextBeep();
+        restart(ERROR_TEMP_TOO_HIGH);
+    }
+    if (tMax - tMin > 10.0f) {
+        logCode(LOG_MAIN_TEMP_MISMATCH);
+        waitUntilNextBeep();
+        restart(ERROR_TEMP_DONT_MATCH);
     }
 }
