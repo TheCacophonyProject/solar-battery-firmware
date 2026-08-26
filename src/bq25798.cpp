@@ -137,6 +137,14 @@ bool BQ25798::vbatPresent() {
     return (regData & VBAT_PRESENT_STAT_MASK) == VBAT_PRESENT_STAT_MASK;
 }
 
+void BQ25798::minimumCharging() {
+    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(BQ25798_CFG_STARTUP_CURRENT_LIMIT_10MA), true);
+}
+
+void BQ25798::maximumCharging() {
+    writeWord(BQ25798_REG03_CHARGE_CURRENT_LIMIT, uint16_t(BQ25798_CFG_CHARGE_CURRENT_10MA), true);
+}
+
 void BQ25798::init() {
     logCode(LOG_CHG_INIT);
 

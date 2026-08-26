@@ -1,3 +1,5 @@
+#include <avr/wdt.h>
+
 #include "bq76920.h"
 #include "log_codes.h"
 #include "ntcTemp.h"
@@ -16,9 +18,6 @@ bool BQ76920::begin() {
     getADCGainAndOffset();
     writeOVandUVTripVoltages();
     writeProtectionRegisters();
-    // Select external NTC (TS1) for temperature readings.
-    // Must be set here so the ADC has time to complete a conversion before the first readTemp() call.
-    setBit(BQ76920_REG04_SYS_CTRL1, 3, true);
     return true;
 }
 
@@ -35,8 +34,17 @@ void BQ76920::disableDischarging() { setBit(BQ76920_REG05_SYS_CTRL2, 1, false); 
 // or low so we need to program stopping/reducing the charging/discharging current.
 //
 float BQ76920::readTemp() {
-    // Set the TEMP_SEL bit to 1 to read the external temperature sensor
-    setBit(BQ76920_REG04_SYS_CTRL1, 3, true);
+    // Set it to read from the external temperature sensor.
+    // If it was not set already then set it and wait for it to take affect (up to 2 seconds).
+    uint8_t regVal = 0;
+    readReg(BQ76920_REG04_SYS_CTRL1, &regVal);
+    if ((regVal & (1 << 3)) == 0) {
+        setBit(BQ76920_REG04_SYS_CTRL1, 3, true);
+        delay(1000);
+        wdt_reset();
+        delay(1000);
+        wdt_reset();
+    }
 
     uint8_t data[2] = {};
     readBlock(BQ76920_REG2C_TS1_HI, data, 2);

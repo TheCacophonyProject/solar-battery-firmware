@@ -10,5 +10,6 @@ void balancerInterrupt();
 void sleepMode();
 void wakeUpBalancer();
 void setupTempAndHumidityCheck(bool balancerOptional);
+void findCells();
 
 #endif

@@ -12,6 +12,8 @@
 #define BQ25798_CFG_CHARGE_VOLTAGE_10MV 1230
 // Charge current limit (unit: 10mA). 200 = 2000mA
 #define BQ25798_CFG_CHARGE_CURRENT_10MA 200
+// Charge limit on startup (unit: 10mA). 5 = 50mA
+#define BQ25798_CFG_STARTUP_CURRENT_LIMIT_10MA 5
 // Input voltage limit (unit: 100mV). 220 = 22.0V
 #define BQ25798_CFG_INPUT_VOLTAGE_100MV 220
 // Input current limit (unit: 10mA). 250 = 2500mA
@@ -179,6 +181,8 @@ class BQ25798 {
     BQ25798_TEMP tsTemp();
     void readADCAll(BQ25798ADC &out);
     bool readStatusRegs(uint8_t out[5]); // REG1B..REG1F (STATUS_0..4)
+    void minimumCharging();
+    void maximumCharging();
 
   private:
     bool _sleeping = false;

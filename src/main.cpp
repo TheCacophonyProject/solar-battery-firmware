@@ -218,49 +218,7 @@ void setup() {
     buzzer_beep();
 
     // ========= Find the BQ76920 (cell balancer) =========
-    // If the cell balancer was not found during the initial temperature and humidity check
-    // we want to enable the charger to power up the cell balancer.
-    // We want to power the charger just long enough to "power up" the cells.
-    // The cells need "powered up" as the individual cell protection will prevent the cells from charging/discharging
-    // until a voltage is applied. Enabling the charger should provide this voltage.
-    bool vbatPresent = charger.vbatPresent();
-    if (!vbatPresent) {
-        // Power up the cells: their individual protection blocks charge/discharge until a voltage is applied.
-        digitalWrite(PIN_CE_N, LOW);
-        for (uint8_t i = 0; i < 10 && !vbatPresent; i++) {
-            delay(100);
-            wdt_reset();
-            vbatPresent = charger.vbatPresent();
-        }
-        digitalWrite(PIN_CE_N, HIGH);
-    }
-    if (!vbatPresent) {
-        restart(ERROR_MISSING_CELLS);
-    }
-
-    // Now that we have the cells powered up we want to find the cell balancer.
-    if (!balancer.begin()) {
-        wakeUpBalancer();
-        if (!balancer.begin()) {
-            logCode(LOG_MAIN_BQ76920_NOT_FOUND);
-            restart(ERROR_MISSING_BQ76920);
-        }
-    }
-    logCode(LOG_MAIN_BQ76920_FOUND);
-    waitUntilNextBeep();
-    buzzer_beep();
-
-    // Extended delay to give time to make voltage and temperature readings.
-    wdt_reset();
-    delay(1000);
-    wdt_reset();
-    delay(1000);
-
-    if (!balancer.properCellPopulation()) {
-        logCode(LOG_MAIN_CELL_POP_FAIL);
-        waitUntilNextBeep();
-        restart(ERROR_MISSING_CELLS);
-    }
+    findCells();
     waitUntilNextBeep();
     buzzer_beep();
 
@@ -554,7 +512,11 @@ void mainMode() {
 }
 
 void restart(uint8_t errorCode) {
+    // Disable the charger.
     digitalWrite(PIN_CE_N, HIGH);
+    // Cut off the output. The balancer might not be available yet so these will just fail silently. That is OK.
+    balancer.disableCharging();
+    balancer.disableDischarging();
     logCode(LOG_MAIN_RESTARTING);
     Serial.flush();
     waitUntilNextBeep();
@@ -605,11 +567,6 @@ void setupTempAndHumidityCheck(bool balancerOptional) {
     // If the balancer is optional only read it if it is found.
     float balancerTemp = balancerOptional ? chargerTemp : balancer.readTemp();
     if (balancerOptional && balancer.begin()) {
-        // After the balancer is booted up we need to wait 2 seconds before reading the temp.
-        delay(1100);
-        wdt_reset();
-        delay(1100);
-        wdt_reset();
         balancerTemp = balancer.readTemp();
     }
 
@@ -631,5 +588,59 @@ void setupTempAndHumidityCheck(bool balancerOptional) {
         logCode(LOG_MAIN_TEMP_MISMATCH);
         waitUntilNextBeep();
         restart(ERROR_TEMP_DONT_MATCH);
+    }
+}
+
+void findCells() {
+    // For the initial power up we need to enable the charger before we can find the balancer and the cells.
+    // This is because the individual cell protection disables output until a voltage is applied.
+    // Because we don't want to charge the cells a lot we reduce the charge current output to 50mA.
+    // So we will enable the charger at 50mA and then find the balancer and cells. This can take a couple of seconds.
+
+    // First lets see if we can already find the cells and balancer.
+    bool balancerFound = balancer.begin();
+    bool cellsFound = balancerFound && balancer.properCellPopulation();
+    if (cellsFound) {
+        // Cells (and balancer) are already available so we don't need to power up the charger and can just exit.
+        return;
+    }
+
+    // Set the charger to a reduced charging current of 50mA (lowest current supported from chip).
+    charger.minimumCharging();
+    digitalWrite(PIN_CE_N, LOW); // Enable charger
+
+    // For up to 2 seconds we will try to find the balancer.
+    if (!balancerFound) {
+        for (int i = 0; i < 10; i++) {
+            wdt_reset();
+            wakeUpBalancer();                 // Takes 200ms
+            balancerFound = balancer.begin(); // Don't run balancer.begin() if we already found it
+            if (balancerFound) {
+                break;
+            }
+        }
+        if (!balancerFound) {
+            logCode(LOG_MAIN_BQ76920_NOT_FOUND);
+            restart(ERROR_MISSING_BQ76920);
+        }
+    }
+
+    // balancer has been found. Now we will try to find the cells.
+    for (int i = 0; i < 20; i++) {
+        wdt_reset();
+        cellsFound = balancer.properCellPopulation();
+        if (cellsFound) {
+            break;
+        }
+        delay(100);
+    }
+
+    // Disable charger and set back to normal charge rate
+    digitalWrite(PIN_CE_N, HIGH);
+    charger.maximumCharging();
+
+    if (!cellsFound) {
+        logCode(LOG_MAIN_CELL_POP_FAIL);
+        restart(ERROR_MISSING_CELLS);
     }
 }
