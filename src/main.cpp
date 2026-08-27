@@ -42,6 +42,7 @@ uint32_t lastBalancerUpdateSeconds = 0;
 uint32_t lastChargerWDTSeconds = 0;
 uint32_t lastProtectionUpdateSeconds = (uint32_t)0 - 6; // Fire on the first loop iteration.
 uint32_t lastStatusLogSeconds = 0;
+uint32_t lastReconfigureSeconds = 0;
 bool sleepModeEnabled = false;
 uint32_t lastInputSourceTime = 0;
 volatile bool chargerInterrupted = false;
@@ -295,6 +296,24 @@ void loop() {
         wakeUpBalancer();
         if (balancer.begin()) {
             logCode(LOG_MAIN_BQ76920_FOUND);
+        }
+    }
+
+    // Re-apply the charger and balancer configuration every 10 minutes. If either chip has reset
+    // itself (brownout, its own watchdog) it will be sitting on power-on defaults while still
+    // answering on I2C, so nothing else here would notice. Rewriting the registers on a timer means
+    // it recovers on its own instead of running on the wrong settings until the next restart.
+    if (seconds - lastReconfigureSeconds >= 600) {
+        lastReconfigureSeconds = seconds;
+        // Safe in either mode: the BQ76920 is never put into ship mode, and begin() does not touch
+        // SYS_CTRL2 so the CHG/DSG state is left alone.
+        balancer.begin();
+        // Only in main mode. In sleep mode the BQ25798 is deliberately held in ship mode and init()
+        // would wake it back up and drain the battery. sleepMode() already re-inits it on wake.
+        if (!sleepModeEnabled) {
+            charger.disable();
+            charger.init();
+            charger.enable();
         }
     }
 
@@ -605,41 +624,32 @@ void findCells() {
         return;
     }
 
-    // Set the charger to a reduced charging current of 50mA (lowest current supported from chip).
+    // Set the charger to a reduced charging current of 50mA (lowest current supported from chip) and power it up for 2
+    // seconds.
     charger.minimumCharging();
     digitalWrite(PIN_CE_N, LOW); // Enable charger
+    delay(1000);
+    waitUntilNextBeep();
+    buzzer_beep();
+    delay(1000);
+    waitUntilNextBeep();
+    buzzer_beep();
+    digitalWrite(PIN_CE_N, HIGH);
+    charger.maximumCharging();
 
-    // For up to 2 seconds we will try to find the balancer.
     if (!balancerFound) {
-        for (int i = 0; i < 10; i++) {
-            wdt_reset();
-            wakeUpBalancer();                 // Takes 200ms
-            balancerFound = balancer.begin(); // Don't run balancer.begin() if we already found it
-            if (balancerFound) {
-                break;
-            }
-        }
-        if (!balancerFound) {
+        if (balancer.begin()) {
             logCode(LOG_MAIN_BQ76920_NOT_FOUND);
             restart(ERROR_MISSING_BQ76920);
         }
     }
 
-    // balancer has been found. Now we will try to find the cells.
-    for (int i = 0; i < 20; i++) {
-        wdt_reset();
-        cellsFound = balancer.properCellPopulation();
-        if (cellsFound) {
-            break;
-        }
-        delay(100);
+    if (balancer.properCellPopulation()) {
+        logCode(LOG_MAIN_CELL_POP_FAIL);
+        restart(ERROR_MISSING_CELLS);
     }
 
-    // Disable charger and set back to normal charge rate
-    digitalWrite(PIN_CE_N, HIGH);
-    charger.maximumCharging();
-
-    if (!cellsFound) {
+    if (!charger.vbatPresent()) {
         logCode(LOG_MAIN_CELL_POP_FAIL);
         restart(ERROR_MISSING_CELLS);
     }
