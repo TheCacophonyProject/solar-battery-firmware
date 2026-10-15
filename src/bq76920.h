@@ -46,7 +46,7 @@
 #define PROTECT_RSNS 0 // 0 = lower range, 1 = upper range (doubles all thresholds)
 
 // SCD delay: 0x0=70µs, 0x1=100µs, 0x2=200µs, 0x3=400µs
-#define PROTECT_SCD_DELAY 0x1 // 100µs
+#define PROTECT_SCD_DELAY 0x3 // 400µs
 // SCD threshold (RSNS=0): 0x0=22mV, 0x1=33mV, 0x2=44mV, 0x3=56mV,
 //                          0x4=67mV, 0x5=78mV, 0x6=89mV, 0x7=100mV
 #define PROTECT_SCD_THRESHOLD 0x5 // 78mV
